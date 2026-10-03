@@ -21,6 +21,7 @@ app.append(glCanvas, canvas, hudRoot);
 
 const input = new Input(canvas);
 const audio = new Audio();
+try { const v = Number(localStorage.getItem('riptide.volume')); if (localStorage.getItem('riptide.volume') !== null && Number.isFinite(v)) audio.volume = v; } catch { /* ignore */ }
 const game = new Game(glCanvas, canvas, hudRoot, input, audio);
 const menus = new Menus(app);
 
@@ -74,6 +75,8 @@ function pause() {
     resume,
     restart: () => { if (lastCfg) startBattle({ ...lastCfg, seed: Math.floor(Math.random() * 1e9) }); },
     quit: () => toTitle(),
+    volume: audio.volume,
+    setVolume: (v) => { audio.setVolume(v); try { localStorage.setItem('riptide.volume', String(v)); } catch { /* ignore */ } },
   });
 }
 function resume() {

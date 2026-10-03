@@ -118,18 +118,21 @@ export class Menus {
   }
 
   // ------------------------------------------------------------ pause
-  pause(cb: { resume: () => void; restart: () => void; quit: () => void }) {
+  pause(cb: { resume: () => void; restart: () => void; quit: () => void; volume: number; setVolume: (v: number) => void }) {
     this.clear();
     const el = h(`
       <div class="screen pause">
         <div class="sheet small">
           <h2>Paused</h2>
+          <label class="vol">Volume <input type="range" min="0" max="100" value="${Math.round(cb.volume * 100)}"></label>
           <button class="btn primary" data-a="resume"><span>Resume</span></button>
           <button class="btn" data-a="restart"><span>Restart battle</span></button>
           <button class="btn" data-a="quit"><span>Quit to title</span></button>
         </div>
       </div>`);
     el.querySelector('[data-a=resume]')!.addEventListener('click', cb.resume);
+    const vol = el.querySelector('.vol input') as HTMLInputElement;
+    vol.addEventListener('input', () => cb.setVolume(Number(vol.value) / 100));
     el.querySelector('[data-a=restart]')!.addEventListener('click', cb.restart);
     el.querySelector('[data-a=quit]')!.addEventListener('click', cb.quit);
     this.root.appendChild(el);

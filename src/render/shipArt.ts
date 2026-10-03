@@ -10,7 +10,8 @@ export interface ShipArt {
   hull: HTMLCanvasElement;        // deck, superstructure, fittings (no main turrets)
   hullShadow: HTMLCanvasElement;  // hull silhouette for low shadow
   upperShadow: HTMLCanvasElement; // superstructure silhouette for long shadow
-  turret: HTMLCanvasElement;      // gunhouse + barrels, turret local frame
+  turret: HTMLCanvasElement;      // gunhouse, turret local frame
+  barrels: HTMLCanvasElement;     // the three guns (drawn separately: recoil & elevation)
   turretShadow: HTMLCanvasElement;
   originX: number; originY: number; // sprite px of local (0,0)
   turretOrigin: number;           // px of turret pivot in turret sprite (x and y)
@@ -288,11 +289,13 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
   // ------------------------------------------------ turret sprite
   const tS = S, tR = 30; // half-size in metres of turret sprite
   const turret = mk(tR * 2 * tS, tR * 2 * tS);
-  drawTurret(turret.getContext('2d')!, tR * tS, tS, livery, false);
+  drawTurret(turret.getContext('2d')!, tR * tS, tS, livery, 'house');
+  const barrels = mk(tR * 2 * tS, tR * 2 * tS);
+  drawTurret(barrels.getContext('2d')!, tR * tS, tS, livery, 'barrels');
   const turretShadow = mk(tR * 2 * tS, tR * 2 * tS);
-  drawTurret(turretShadow.getContext('2d')!, tR * tS, tS, livery, true);
+  drawTurret(turretShadow.getContext('2d')!, tR * tS, tS, livery, 'shadow');
 
-  return { hull, hullShadow, upperShadow, turret, turretShadow, originX: ox, originY: oy, turretOrigin: tR * tS, scale: S };
+  return { hull, hullShadow, upperShadow, turret, barrels, turretShadow, originX: ox, originY: oy, turretOrigin: tR * tS, scale: S };
 }
 
 function quad(ctx: Ctx, x: number, y: number, rot: number) {
@@ -343,7 +346,8 @@ function kingfisher(ctx: Ctx, x: number, y: number, rot: number) {
   ctx.restore();
 }
 
-function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, shadow: boolean) {
+function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, mode: 'shadow' | 'barrels' | 'house') {
+  const shadow = mode === 'shadow';
   ctx.translate(o, o);
   ctx.scale(S, S);
   const body = new Path2D();
@@ -371,7 +375,7 @@ function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, shadow: boolean) 
     ctx.fillRect(-5.4, -7.8, 2.2, 15.6);
     return;
   }
-  for (const y of [-2.6, 0, 2.6]) {
+  if (mode === 'barrels') for (const y of [-2.6, 0, 2.6]) {
     const b = barrel(y);
     const g = ctx.createLinearGradient(0, y - 0.6, 0, y + 0.6);
     g.addColorStop(0, '#9aa3a8'); g.addColorStop(0.45, '#6b7479'); g.addColorStop(1, '#3d4448');
@@ -382,6 +386,7 @@ function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, shadow: boolean) 
     // muzzle
     ctx.fillStyle = '#25292b'; ctx.fillRect(26.1, y - 0.25, 0.5, 0.5);
   }
+  if (mode === 'barrels') return;
   const g = ctx.createLinearGradient(-8, -6.6, 6, 6.6);
   g.addColorStop(0, l.steelLight); g.addColorStop(0.5, l.steel); g.addColorStop(1, l.steelDark);
   ctx.fillStyle = g; ctx.fill(body);

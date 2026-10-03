@@ -361,7 +361,14 @@ export class Renderer {
         const ca = Math.cos(-ang), sa = Math.sin(-ang);
         ctx.drawImage(art.turretShadow, -tr + so.x * ca - so.y * sa, -tr + so.x * sa + so.y * ca, tr * 2, tr * 2);
         ctx.globalAlpha = sinkA;
-        ctx.translate(-recoil, 0);
+        // guns: recoil back into the gunhouse; elevation foreshortens them seen from above
+        const elevDeg = 1.5 + 33 * Math.pow(clamp01(t.elevation), 1.3);
+        const fore = Math.cos(elevDeg * DEG);
+        ctx.save();
+        ctx.translate(5.6 - recoil, 0);
+        ctx.scale(fore, 1);
+        ctx.drawImage(art.barrels, -tr - 5.6, -tr, tr * 2, tr * 2);
+        ctx.restore();
         ctx.drawImage(art.turret, -tr, -tr, tr * 2, tr * 2);
         if (dead) {
           ctx.fillStyle = 'rgba(15,12,10,0.6)';
