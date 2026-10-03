@@ -98,7 +98,7 @@ body[data-state=battle] canvas.world { cursor: none; }
 .hud-help b { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 2px; text-align: center; font-family: var(--mono); font-weight: 600; font-size: 11px; color: var(--text); border: 1px solid var(--line-2); border-radius: 3px; background: rgba(255, 255, 255, 0.04); line-height: 16px; }
 
 /* status (damage control) */
-.hud-status { position: absolute; left: 12px; bottom: 12px; width: 464px; padding-bottom: 8px; }
+.hud-status { position: absolute; left: 12px; bottom: 12px; width: 586px; padding-bottom: 8px; }
 .hud-status canvas { display: block; margin: 6px 12px 2px; }
 .dc-stats { padding: 0 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 10px; }
 .dc-bar { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; font-size: 10.5px; letter-spacing: 0.12em; color: var(--muted); }
