@@ -147,7 +147,7 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
   // ------------------------------------------------ barbettes (seen around turrets)
   for (const t of cls.turrets) circle(t.x, t.y, t.barbetteRadius + 0.6, dark, 'rgba(0,0,0,0.6)', 0.25);
   // T2 sits on a raised barbette with a wide base ring
-  circle(50, 0, 8.6, steel, 'rgba(0,0,0,0.45)', 0.2);
+  circle(cls.turrets[1].x, 0, 8.6, steel, 'rgba(0,0,0,0.45)', 0.2);
 
   // ------------------------------------------------ superstructure
   // Each tier casts a soft ambient-occlusion halo on what lies beneath it, so
@@ -171,69 +171,69 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
   const g1 = (x0: number, x1: number, hw: number) => { const g = ctx.createLinearGradient(0, -hw, 0, hw); g.addColorStop(0, light); g.addColorStop(0.5, steel); g.addColorStop(1, dark); return g; };
 
   // 01 level: long deckhouse carrying the 5"/38 battery
-  tier(-50, 38, 10.2, 1.8, g1(-50, 38, 10.2), 12, 4);
+  tier(-50, 31.5, 10.2, 1.8, g1(-50, 31.5, 10.2), 12, 4);
   // 5"/38 twin mounts along the sides (non-functional detail)
-  for (const x of [27, 15, 3, -21, -33]) for (const sd of [-1, 1]) fiveInch(ctx, x, sd * 12.6, sd, steel, dark);
+  for (const x of [24, 12, 0, -24, -36]) for (const sd of [-1, 1]) fiveInch(ctx, x, sd * 12.6, sd, steel, dark);
   // boat deck details: vents and lockers
   ctx.fillStyle = 'rgba(30,36,40,0.55)';
-  for (let x = -46; x < 34; x += 4.2) for (const sd of [-1, 1]) ctx.fillRect(x, sd * 8.6 - 0.35, 2.2, 0.7);
+  for (let x = -46; x < 28; x += 4.2) for (const sd of [-1, 1]) ctx.fillRect(x, sd * 8.6 - 0.35, 2.2, 0.7);
   // 02 level forward
-  tier(-3, 37, 7.8, 1.5, g1(-3, 37, 7.8), 10, 3);
+  tier(-3, 29, 7.8, 1.5, g1(-3, 29, 7.8), 10, 3);
   // conning tower (17.3" armour, oval)
   ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.ellipse(32.5, 0, 4.4, 4.6, 0, 0, Math.PI * 2); ctx.fillStyle = '#6b757b'; ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.ellipse(25.2, 0, 4.0, 4.4, 0, 0, Math.PI * 2); ctx.fillStyle = '#6b757b'; ctx.fill(); ctx.restore();
   ctx.lineWidth = 0.22; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.stroke();
   ctx.strokeStyle = '#1b2023'; ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.ellipse(32.5, 0, 3.4, 3.6, 0, -0.9, 0.9); ctx.stroke();   // vision slits
+  ctx.beginPath(); ctx.ellipse(25.2, 0, 3.0, 3.4, 0, -0.9, 0.9); ctx.stroke();   // vision slits
   // navigating bridge & flag bridge, tapering upward
-  tier(11, 31, 6.6, 1.3, g1(11, 31, 6.6), 9, 3);
-  tier(14, 28.5, 5.2, 1.2, light, 8, 2.5);
+  tier(8, 23.5, 6.6, 1.3, g1(8, 23.5, 6.6), 9, 3);
+  tier(10.5, 21.5, 5.2, 1.2, light, 8, 2.5);
   // fire-control tower top: Mk 38 director with its 26.5 ft rangefinder
   ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 9;
-  ctx.beginPath(); ctx.roundRect(17.6, -3.6, 7.2, 7.2, 2.6); ctx.fillStyle = '#8a959a'; ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.roundRect(13.5, -3.6, 7.0, 7.2, 2.6); ctx.fillStyle = '#8a959a'; ctx.fill(); ctx.restore();
   ctx.lineWidth = 0.18; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
-  ctx.fillStyle = '#39424a'; ctx.beginPath(); ctx.roundRect(20.4, -4.9, 1.4, 9.8, 0.6); ctx.fill();
-  ctx.fillStyle = '#c3cbcf'; ctx.fillRect(20.7, -1.1, 0.8, 2.2);
+  ctx.fillStyle = '#39424a'; ctx.beginPath(); ctx.roundRect(16.3, -4.9, 1.4, 9.8, 0.6); ctx.fill();
+  ctx.fillStyle = '#c3cbcf'; ctx.fillRect(16.6, -1.1, 0.8, 2.2);
   // foremast with SK air-search mattress
   ctx.strokeStyle = '#262c30'; ctx.lineWidth = 0.32;
-  ctx.beginPath(); ctx.moveTo(25.5, -6.2); ctx.lineTo(25.5, 6.2); ctx.moveTo(23.2, 0); ctx.lineTo(28, 0); ctx.stroke();
-  ctx.save(); ctx.translate(26.6, 0);
+  ctx.beginPath(); ctx.moveTo(21.4, -6.2); ctx.lineTo(21.4, 6.2); ctx.moveTo(19.4, 0); ctx.lineTo(23.6, 0); ctx.stroke();
+  ctx.save(); ctx.translate(22.4, 0);
   ctx.fillStyle = 'rgba(40,46,50,0.85)'; ctx.fillRect(-0.4, -3.2, 0.8, 6.4);
   ctx.strokeStyle = 'rgba(160,170,175,0.6)'; ctx.lineWidth = 0.08;
   for (let i = -3; i <= 3; i += 0.8) { ctx.beginPath(); ctx.moveTo(-0.4, i); ctx.lineTo(0.4, i); ctx.stroke(); }
   ctx.restore();
   // Mk 37 secondary directors (fore & aft)
-  for (const x of [30.5, -30.5]) {
+  for (const [x, y] of [[4.5, -6.6], [4.5, 6.6], [-46.5, 0]]) {
     ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.roundRect(x - 2.2, -2.4, 4.4, 4.8, 1.4); ctx.fillStyle = '#7f8a90'; ctx.fill(); ctx.restore();
-    ctx.fillStyle = '#2f373c'; ctx.fillRect(x - 0.3, -3.2, 0.6, 6.4);
+    ctx.beginPath(); ctx.roundRect(x - 2.2, y - 2.4, 4.4, 4.8, 1.4); ctx.fillStyle = '#7f8a90'; ctx.fill(); ctx.restore();
+    ctx.fillStyle = '#2f373c'; ctx.fillRect(x - 0.3, y - 3.2, 0.6, 6.4);
   }
   // funnels (forward funnel faired into the tower)
   funnel(ctx, 6.5, 10.5, 7.2);
-  funnel(ctx, -17.5, 10, 6.6);
+  funnel(ctx, -23, 10, 6.6);
   // boat cranes and boats between the funnels
   for (const sd of [-1, 1]) {
-    boat(ctx, -5.5, sd * 6.6, 9.5, 2.7);
-    ctx.save(); ctx.translate(-26, sd * 5.2); ctx.rotate(sd > 0 ? 0.55 : -0.55);
+    boat(ctx, -9, sd * 6.6, 9.5, 2.7);
+    ctx.save(); ctx.translate(-30, sd * 5.2); ctx.rotate(sd > 0 ? 0.55 : -0.55);
     ctx.fillStyle = '#4c555b'; ctx.fillRect(0, -0.45, 15, 0.9);
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.1; ctx.strokeRect(0, -0.45, 15, 0.9);
     ctx.restore();
-    circle(-26, sd * 5.2, 1.1, '#5b646a');
+    circle(-30, sd * 5.2, 1.1, '#5b646a');
   }
   // aft superstructure & mainmast
   tier(-49, -33, 5.6, 1.2, g1(-49, -33, 5.6), 9);
   ctx.strokeStyle = '#262c30'; ctx.lineWidth = 0.32;
-  ctx.beginPath(); ctx.moveTo(-28.5, -6.5); ctx.lineTo(-28.5, 6.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-32.5, -6.5); ctx.lineTo(-32.5, 6.5); ctx.stroke();
   // aft Mk 38 director
   ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 8;
   ctx.beginPath(); ctx.roundRect(-43.4, -3.2, 6.2, 6.4, 2.4); ctx.fillStyle = '#8a959a'; ctx.fill(); ctx.restore();
   ctx.fillStyle = '#39424a'; ctx.beginPath(); ctx.roundRect(-41, -4.4, 1.3, 8.8, 0.6); ctx.fill();
   // 40mm quads on the superstructure
-  for (const [x, y] of [[36, -7], [36, 7], [-1, -7.8], [-1, 7.8], [-46, -6.4], [-46, 6.4], [-36.5, -7], [-36.5, 7]]) {
+  for (const [x, y] of [[29.5, -8], [29.5, 8], [-1, -7.8], [-1, 7.8], [-46, -6.4], [-46, 6.4], [-36.5, -7], [-36.5, 7]]) {
     circle(x, y, 2.0, dark); quad(ctx, x, y, y > 0 ? 0.6 : -0.6);
   }
   // 40mm tubs fore and aft of turrets
-  for (const [x, y] of [[-87, -11], [-87, 11], [-61, -12.5], [-61, 12.5]]) { circle(x, y, 2.3, dark); quad(ctx, x, y, 0); }
+  for (const [x, y] of [[-79, -10.5], [-79, 10.5], [-52, -12.8], [-52, 12.8]]) { circle(x, y, 2.3, dark); quad(ctx, x, y, 0); }
   // 20mm Oerlikons along the deck edge
   ctx.fillStyle = '#2b3135';
   for (let x = -120; x < 120; x += 5.5) {
@@ -280,9 +280,9 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
     const c = upperShadow.getContext('2d')!;
     c.translate(ox, oy); c.scale(S, S); c.fillStyle = '#000';
     const b = (x0: number, x1: number, hw: number) => { c.beginPath(); c.roundRect(x0, -hw, x1 - x0, hw * 2, 1.4); c.fill(); };
-    b(-50, 38, 10.2); b(-3, 37, 7.8); b(11, 31, 6.6); b(14, 28.5, 5.2); b(17.6, 24.8, 3.6);
-    c.beginPath(); c.ellipse(8, 0, 4.8, 3.2, 0, 0, 7); c.fill();
-    c.beginPath(); c.ellipse(-18, 0, 4.8, 3.0, 0, 0, 7); c.fill();
+    b(-50, 31.5, 10.2); b(-3, 29, 7.8); b(8, 23.5, 6.6); b(10.5, 21.5, 5.2); b(13.5, 20.5, 3.6);
+    c.beginPath(); c.ellipse(6.5, 0, 5.2, 3.6, 0, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(-23, 0, 5.0, 3.3, 0, 0, 7); c.fill();
     c.fillRect(19, -6.5, 0.6, 13);
   }
 

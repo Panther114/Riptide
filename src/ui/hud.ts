@@ -75,7 +75,7 @@ export class Hud {
       <div class="k"><b>A</b>/<b>D</b> hold rudder</div>
       <div class="k"><b>LMB</b> fire ready turrets</div>
       <div class="k"><b>1</b>/<b>2</b> load AP / HC</div>
-      <div class="k"><b>Wheel</b> zoom · <b>MMB</b> lock camera</div>
+      <div class="k"><b>Wheel</b> zoom · <b>MMB</b> drag pan · click ship lock</div>
       <div class="k"><b>Tab</b> next ship (fleet battles)</div>
       <div class="k"><b>H</b> hide help · <b>Esc</b> pause</div>`);
     this.root.appendChild(this.help);

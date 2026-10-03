@@ -45,6 +45,8 @@ export class Game {
   private attractT = 0;
   private attractFocus = 0;
   timeScale = 1;
+  /** free-look offset from the focused ship (middle-drag) */
+  pan = { x: 0, y: 0 };
   private slowmo = 0;
   private lastOut: Ship | null = null;
 
@@ -67,6 +69,7 @@ export class Game {
     const p = this.world.ships.find((s) => s.controller === 'player');
     this.playerId = p ? p.id : null;
     this.lockId = null;
+    this.pan = { x: 0, y: 0 };
     this.paused = false;
     this.endTimer = -1;
     this.salvos.clear();
@@ -131,7 +134,8 @@ export class Game {
         me.setCommand({ ...this.cmd }, this.world.time);
       }
       if (inp.wheel) cam.zoomBy(inp.wheel);
-      if (inp.clicked[1]) this.pickLock(cam.screenToWorld(inp.mouse));
+      if (inp.midClick) this.pickLock(cam.screenToWorld(inp.mouse));
+      if (inp.midDrag.x || inp.midDrag.y) { this.pan.x -= inp.midDrag.x / cam.zoom; this.pan.y -= inp.midDrag.y / cam.zoom; }
 
       // ---- simulate (sub-stepped)
       // brief slow motion for the decisive moments
@@ -186,7 +190,7 @@ export class Game {
       else if (me) focus = me.pos;
       else { const any = this.world.ships.find((s) => s.status !== 'sunk'); if (any) focus = any.pos; }
     }
-    cam.update(dtReal, focus, { x: 0, y: 0 });
+    cam.update(dtReal, { x: focus.x + this.pan.x, y: focus.y + this.pan.y }, { x: 0, y: 0 });
 
     // ---- draw
     this.renderer.render(this.world, {
@@ -243,9 +247,11 @@ export class Game {
         if (ep && Math.hypot(ep.x - m.x, ep.y - m.y) < 45) { best = s; break; }
       }
     }
-    const prev = this.lockId;
-    this.lockId = best && best.id !== this.playerId ? best.id : null;
-    if (prev !== this.lockId) { cam.refocus(); this.audio.ui('click'); }
+    // empty water: keep the current view; own ship: back to following it; other ship: lock on
+    if (!best) return;
+    this.lockId = best.id !== this.playerId ? best.id : null;
+    this.pan = { x: 0, y: 0 };
+    cam.refocus(); this.audio.ui('click');
   }
 
   private incomingPlayed = new Set<number>();

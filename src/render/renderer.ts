@@ -137,7 +137,7 @@ export class Renderer {
       while (w.length && this.time - w[0].t > 55) w.shift();
       // funnel smoke & fires
       const dark = s.alive ? 1 - s.power : 0.2;
-      for (const fx of [8, -18]) {
+      for (const fx of [6.5, -23]) {
         const p = s.localToWorld({ x: fx, y: 0 });
         if (s.alive) this.fx.funnelSmoke(p.x, p.y, 2.2 + s.power * 2, dt, dark * 0.6 + 0.2);
       }
