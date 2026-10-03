@@ -12,8 +12,12 @@ export class StatusPanel {
   w = 440; h = 128;
   private t = 0;
   hover: string | null = null;
+  mouse: { x: number; y: number } | null = null;
+  armorView = false;
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    canvas.addEventListener('mousemove', (e) => { const r = canvas.getBoundingClientRect(); this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top }; });
+    canvas.addEventListener('mouseleave', () => { this.mouse = null; });
     this.ctx = canvas.getContext('2d')!;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = this.w * dpr; canvas.height = this.h * dpr;
@@ -32,6 +36,17 @@ export class StatusPanel {
     const cx = w / 2, cy = h / 2;
     const X = (x: number) => cx + x * k;
     const Y = (y: number) => cy + y * ky;
+    // which module is under the pointer (for the tooltip)
+    this.hover = null;
+    if (this.mouse) {
+      const lx = (this.mouse.x - cx) / k, ly = (this.mouse.y - cy) / ky;
+      for (const t of s.turrets) if (Math.hypot((lx - t.def.x) * k, (ly - t.def.y) * ky) < 9) this.hover = t.def.id;
+      if (!this.hover) for (const m of s.modules.values()) {
+        const r = m.def.rect;
+        if (m.def.kind !== 'turret' && lx >= r.x0 && lx <= r.x1 && ly >= r.y0 && ly <= r.y1) { this.hover = m.def.id; if (m.def.band === 'high') break; }
+      }
+      if (!this.hover) { const sec = s.sections.find((q) => lx >= q.def.x0 && lx < q.def.x1); if (sec && Math.abs(ly) < s.cls.halfBeam(lx)) this.hover = 'sec:' + sec.def.id; }
+    }
 
     // hull
     const hull = new Path2D();
@@ -79,6 +94,39 @@ export class StatusPanel {
     ctx.lineWidth = 1.2;
     ctx.stroke(hull);
 
+    if (this.armorView) {
+      // armour scheme: belt thickness by zone, deck figure underneath
+      ctx.save();
+      ctx.clip(hull);
+      for (const z of s.cls.zones) {
+        const t = clamp01((z.belt - 20) / 330);
+        ctx.fillStyle = `rgba(${Math.round(80 + t * 150)},${Math.round(105 + t * 55)},${Math.round(120 - t * 70)},${0.45 + t * 0.35})`;
+        ctx.fillRect(X(z.x0), 0, (z.x1 - z.x0) * k, h);
+      }
+      ctx.restore();
+      ctx.font = '600 9px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const z of s.cls.zones) {
+        const xm = X((z.x0 + z.x1) / 2), wz = (z.x1 - z.x0) * k;
+        if (wz < 22) continue;
+        ctx.fillStyle = 'rgba(8,16,20,0.9)';
+        ctx.fillText(`${z.belt}`, xm, cy - 30);
+        ctx.fillStyle = 'rgba(8,16,20,0.65)';
+        ctx.fillText(`${z.deck}`, xm, cy + 30);
+      }
+      for (const t of s.turrets) {
+        ctx.beginPath(); ctx.arc(X(t.def.x), Y(t.def.y), 7.5, 0, TAU);
+        ctx.fillStyle = 'rgba(240,120,80,0.95)'; ctx.fill(); ctx.strokeStyle = 'rgba(8,16,20,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = 'rgba(8,16,20,0.9)'; ctx.font = '600 7.5px "IBM Plex Mono", monospace';
+        ctx.fillText(`${t.def.armor.face}`, X(t.def.x), Y(t.def.y));
+      }
+      ctx.fillStyle = 'rgba(210,228,236,0.55)';
+      ctx.font = '600 9px "Barlow Condensed", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('ARMOUR (mm) · belt above, deck below, turret faces in circles · V to return', 8, h - 4);
+      return;
+    }
+
     // modules
     ctx.font = '600 8.5px "Barlow Condensed", sans-serif';
     ctx.textAlign = 'center';
@@ -101,6 +149,7 @@ export class StatusPanel {
         ctx.beginPath(); ctx.moveTo(x + 2, y + 2); ctx.lineTo(x + ww - 2, y + hh - 2); ctx.moveTo(x + ww - 2, y + 2); ctx.lineTo(x + 2, y + hh - 2); ctx.stroke();
       }
       if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 0.7})`; ctx.fillRect(x, y, ww, hh); }
+      if (this.hover === d.id) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.5, y + 0.5, ww - 1, hh - 1); }
       if (high) { ctx.strokeStyle = 'rgba(10,20,25,0.6)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, ww - 1, hh - 1); }
       if (ww > 18 && hh > 12) {
         ctx.fillStyle = 'rgba(8,16,20,0.85)';

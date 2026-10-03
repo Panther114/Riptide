@@ -5,7 +5,7 @@ import { Vec2, clamp, dist, pointInPolygon, toLocal, fromAngle } from './core/ma
 import { AIDirector } from './ai/ai';
 import { Audio } from './audio/audio';
 import { Input } from './input/input';
-import { Renderer, TEAM_RGB } from './render/renderer';
+import { Renderer, TEAM_RGB, edgePointer } from './render/renderer';
 import type { Ship } from './sim/ship';
 import { STATE_NAMES, newCommand, type BattleConfig, type ShipCommand } from './sim/types';
 import { World, WorldEvent } from './sim/world';
@@ -45,6 +45,8 @@ export class Game {
   private attractT = 0;
   private attractFocus = 0;
   timeScale = 1;
+  private slowmo = 0;
+  private lastOut: Ship | null = null;
 
   constructor(glCanvas: HTMLCanvasElement, canvas: HTMLCanvasElement, hudRoot: HTMLElement, input: Input, audio: Audio) {
     this.renderer = new Renderer(glCanvas, canvas);
@@ -69,6 +71,7 @@ export class Game {
     this.endTimer = -1;
     this.salvos.clear();
     this.salvoCount = 0;
+    this.lastOut = null;
     this.cmd = newCommand();
     if (p) { this.cmd.telegraph = p.telegraph; }
     if (this.hud) { this.hud.root.remove(); this.hud = null; }
@@ -115,6 +118,7 @@ export class Game {
       if (inp.hit('KeyH')) this.hud?.toggleHelp();
       if (inp.hit('KeyM')) this.audio.toggleMute();
       if (inp.hit('Tab')) this.switchShip();
+      if (inp.hit('KeyV') && this.hud) { this.hud.status.armorView = !this.hud.status.armorView; this.audio.ui('tick'); }
       if (me && me.alive) {
         if (inp.hit('KeyW') || inp.hit('ArrowUp')) { this.cmd.telegraph = clamp(this.cmd.telegraph + 1, -2, 4); this.audio.ui('tick'); }
         if (inp.hit('KeyS') || inp.hit('ArrowDown')) { this.cmd.telegraph = clamp(this.cmd.telegraph - 1, -2, 4); this.audio.ui('tick'); }
@@ -130,7 +134,9 @@ export class Game {
       if (inp.clicked[1]) this.pickLock(cam.screenToWorld(inp.mouse));
 
       // ---- simulate (sub-stepped)
-      const simDt = dt * this.timeScale;
+      // brief slow motion for the decisive moments
+      this.slowmo = Math.max(0, this.slowmo - dtReal);
+      const simDt = dt * this.timeScale * (this.slowmo > 0 ? 0.3 + 0.7 * (1 - Math.min(1, this.slowmo / 1.2)) : 1);
       const steps = Math.max(1, Math.ceil(simDt / (1 / 60)));
       for (let i = 0; i < steps; i++) {
         this.ai.update(this.world, simDt / steps);
@@ -233,11 +239,8 @@ export class Game {
       const m = this.input.mouse;
       for (const s of this.world.ships) {
         if (s.status === 'sunk' || s.id === this.playerId) continue;
-        const sp = cam.worldToScreen(s.pos);
-        if (sp.x > 30 && sp.y > 30 && sp.x < cam.w - 30 && sp.y < cam.h - 30) continue;
-        const cx = cam.w / 2, cy = cam.h / 2, ang = Math.atan2(sp.y - cy, sp.x - cx);
-        const k = Math.min((cam.w / 2 - 30) / Math.abs(Math.cos(ang) || 1e-6), (cam.h / 2 - 30) / Math.abs(Math.sin(ang) || 1e-6));
-        if (Math.hypot(cx + Math.cos(ang) * k - m.x, cy + Math.sin(ang) * k - m.y) < 45) { best = s; break; }
+        const ep = edgePointer(cam, cam.worldToScreen(s.pos));
+        if (ep && Math.hypot(ep.x - m.x, ep.y - m.y) < 45) { best = s; break; }
       }
     }
     const prev = this.lockId;
@@ -328,12 +331,14 @@ export class Game {
         case 'magazine': {
           const p = e.ship.localToWorld({ x: e.x, y: 0 });
           fx.explosion(p.x, p.y, 2.2, 'magazine');
+          if (this.mode === 'battle') this.slowmo = 2.6;
           if (vol) this.audio.hit(earD(p) * 0.5, 'magazine');
           cam.addShake(e.ship.id === this.playerId ? 1.2 : 0.7);
           this.hud?.showBanner(`<div class="b-k ${e.ship.team === me?.team ? 'bad' : 'good'}">MAGAZINE DETONATION</div><div class="b-s">${e.ship.name.toUpperCase()} HAS BLOWN UP</div>`, 4200);
           break;
         }
         case 'outOfAction': {
+          this.lastOut = e.ship;
           if (!this.hud) break;
           const own = e.ship.team === me?.team;
           if (e.reason !== 'Magazine detonation') this.hud.showBanner(`<div class="b-k ${own ? 'bad' : 'good'}">${e.ship.name.toUpperCase()} OUT OF ACTION</div><div class="b-s">${e.reason}</div>`, 3600);
@@ -350,7 +355,14 @@ export class Game {
           if (vol) this.audio.hit(earD(e.pos), 'nonpen');
           break;
         }
-        case 'end': break;
+        case 'end': {
+          if (this.mode !== 'battle') break;
+          this.slowmo = Math.max(this.slowmo, 1.6);
+          // frame the decisive moment: the ship that just went out of action
+          if (this.lastOut && this.lastOut.id !== this.playerId) { this.lockId = this.lastOut.id; this.renderer.camera.refocus(); }
+          this.renderer.camera.targetZoom = Math.max(this.renderer.camera.targetZoom, 0.45);
+          break;
+        }
       }
     }
   }

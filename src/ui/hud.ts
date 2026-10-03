@@ -22,6 +22,7 @@ export class Hud {
   private minimap: HTMLCanvasElement;
   private mmCtx: CanvasRenderingContext2D;
   private tick = 0;
+  private tip!: HTMLElement;
   private canvasTick = 1;
   private help: HTMLElement;
   private banner: HTMLElement;
@@ -54,10 +55,12 @@ export class Hud {
     this.root.appendChild(this.log);
 
     const left = el('div', 'hud-status panel');
-    left.appendChild(el('div', 'panel-title', '<span>DAMAGE CONTROL</span><span class="dc-name"></span>'));
+    left.appendChild(el('div', 'panel-title', '<span>DAMAGE CONTROL <em class="dc-key">V armour</em></span><span class="dc-name"></span>'));
     const cv = document.createElement('canvas');
     left.appendChild(cv);
     this.status = new StatusPanel(cv);
+    this.tip = el('div', 'dc-tip');
+    left.appendChild(this.tip);
     this.stat = el('div', 'dc-stats');
     left.appendChild(this.stat);
     this.root.appendChild(left);
@@ -77,10 +80,33 @@ export class Hud {
       <div class="k"><b>H</b> hide help · <b>Esc</b> pause</div>`);
     this.root.appendChild(this.help);
     setTimeout(() => this.help.classList.add('hidden'), 35000);
+    this.tipEl = el('div', 'hud-tip');
+    this.root.appendChild(this.tipEl);
+    let seen = false;
+    try { seen = localStorage.getItem('riptide.tips') === '1'; } catch { /* private mode */ }
+    if (!seen) {
+      const tips: [number, string][] = [
+        [5, '<b>Find the enemy</b> — middle-click the red arrow at the screen edge to lock the camera on her. Wheel to zoom.'],
+        [17, '<b>Lead the target</b> — your shells fly for many seconds. Put the cursor ahead of the dashed ghost hull and click to fire.'],
+        [31, '<b>Read the fall of shot</b> — spotting reports on the right say over, short or straddle. Walk your salvos on.'],
+        [45, '<b>Angle your ship</b> — keep the enemy ~45° off the bow: all turrets bear and your belt is harder to pierce. <b>A</b>/<b>D</b> steer, <b>W</b>/<b>S</b> engines.'],
+        [60, '<b>Damage control</b> — the diagram bottom-left shows every compartment. Hover it, or press <b>V</b> for the armour scheme.'],
+      ];
+      for (const [t, html] of tips) setTimeout(() => { if (this.root.isConnected) this.showTip(html); }, t * 1000);
+      setTimeout(() => { try { localStorage.setItem('riptide.tips', '1'); } catch { /* ignore */ } }, 61000);
+    }
     this.buildHelm();
   }
 
   toggleHelp() { this.help.classList.toggle('hidden'); }
+  private tipEl!: HTMLElement;
+  private tipTimer = 0;
+  showTip(html: string) {
+    this.tipEl.innerHTML = html;
+    this.tipEl.classList.add('show');
+    clearTimeout(this.tipTimer);
+    this.tipTimer = window.setTimeout(() => this.tipEl.classList.remove('show'), 10500);
+  }
 
   // ------------------------------------------------------------ log & alerts
   logLine(html: string, cls = '') {
@@ -243,6 +269,30 @@ export class Hud {
         <div class="am ${ammoSel === 'HC' ? 'sel' : ''}"><b>2</b> HC <span>${ammoTotals.HC}</span></div>
         <div class="fc"><div class="fc-l">SOLUTION <b>${fqLabel}</b></div><div class="fc-bar"><i style="width:${(fq * 100).toFixed(0)}%"></i></div></div>
       </div>`;
+
+    // tooltip for the module under the pointer
+    const hv = this.status.hover;
+    if (hv) {
+      let html = '';
+      if (hv.startsWith('sec:')) {
+        const sec = me.sections.find((q) => 'sec:' + q.def.id === hv)!;
+        const w = sec.port + sec.stbd;
+        const holes = me.holes.filter((h) => me.sections[h.section] === sec);
+        const under = holes.filter((h) => me.waterRise(h.x) - h.z > 0).length;
+        html = `<b>${sec.def.name} section</b><span>${Math.round(w)} / ${sec.def.capacity} t flooded · ${holes.length} hole${holes.length === 1 ? '' : 's'}${holes.length ? ` (${under} below water)` : ''}</span>`;
+      } else {
+        const m = me.mod(hv);
+        const lvl = m.flooded ? 'Flooded' : ['Operational', 'Damaged', 'Heavily damaged', 'Destroyed'][m.level];
+        const t = me.turrets.find((q) => q.def.id === hv);
+        const zone = me.cls.zones.find((z) => (m.def.rect.x0 + m.def.rect.x1) / 2 >= z.x0 && (m.def.rect.x0 + m.def.rect.x1) / 2 < z.x1);
+        const armor = t ? `Face ${t.def.armor.face} · side ${t.def.armor.side} · roof ${t.def.armor.roof} · barbette ${t.def.armor.barbette} mm`
+          : m.def.band === 'low' && zone ? `Behind ${zone.belt} mm belt / ${zone.deck} mm deck` : (me.cls.structures.find((q) => q.module === hv)?.armor ?? 16) + ' mm plating';
+        const effect = ({ engine: 'Drives one shaft: speed', boiler: 'Raises steam: speed', steering: 'Rudder control', bridge: 'Helm orders', director: 'Fire control: dispersion', funnel: 'Boiler draught', turret: 'Main battery', magazine: 'Ammunition supply' } as Record<string, string>)[m.def.kind];
+        html = `<b>${m.def.name}</b><span class="lv${m.flooded ? 3 : m.level}">${lvl} · ${Math.round((m.hp / m.def.hp) * 100)}%</span><span>${effect}</span><span class="dim">${armor}</span>`;
+      }
+      this.tip.innerHTML = html;
+      this.tip.classList.add('show');
+    } else this.tip.classList.remove('show');
 
     // damage control stats
     const r = me.readiness();

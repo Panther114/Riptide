@@ -24,6 +24,8 @@ semi-realistic shell/armour/compartment simulation underneath arcade controls.
 | `1` / `2` | Load AP / HC for the next reload |
 | Wheel | Zoom from close tactical view to the whole battle area |
 | `MMB` | On a ship: lock camera on it · on open water: back to your ship |
+| `V` | Damage-control diagram ↔ armour scheme (hover the diagram for module details) |
+| `Tab` | Fleet battles: take command of the next ship of your side |
 | `H` · `M` · `Esc` | Controls hint · mute · pause |
 
 ## What is simulated
@@ -65,7 +67,15 @@ armour, good at wrecking directors/bridge and starting fires.
   flood it (that turret can no longer reload).
 - Magazine detonations are possible but rare.
 - A ship is **out of action** when sunk, blown up, her main battery is silenced, or she is
-  crippled (little firepower left plus heavy flooding/loss of power).
+  crippled (little firepower left plus heavy flooding/loss of power). Battles are capped at
+  25 minutes; at the limit the side with more fighting strength holds the field.
+
+**Feedback.** Every hit on or by you floats a verdict at the impact point (CITADEL /
+PENETRATION / OVERPENETRATION / RICOCHET / NO PENETRATION / BELOW WATERLINE / HE HIT) with the
+plate, obliquity and *effective armour vs. penetration*, and the log on the right names the
+compartments it wrecked. After each of your salvos lands, a spotting report says whether it was
+over, short or a straddle and by how much. Hover the damage-control diagram for any module's
+state, role and protection.
 
 **AI.** Two layers, built for fleets: a `TeamCommander` per side (target assignment /
 concentration of fire, doctrine — press, hold or open the range — from relative strength) and a

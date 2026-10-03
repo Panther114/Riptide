@@ -14,6 +14,19 @@ interface Decal { x: number; y: number; r: number; a: number }
 interface Slick { x: number; y: number; r: number; t: number; max: number }
 export interface FloatText { x: number; y: number; text: string; sub?: string; color: string; t: number; life: number; big?: boolean }
 
+/** Where to draw the edge-of-screen pointer to an off-screen point (null if on screen). Avoids the HUD panels. */
+export function edgePointer(cam: Camera, sp: Vec2): { x: number; y: number; ang: number } | null {
+  const m = 30;
+  if (sp.x > m && sp.y > m && sp.x < cam.w - m && sp.y < cam.h - m) return null;
+  const x0 = 40, x1 = cam.w - 40, y0 = 80, y1 = cam.h - 200;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const ang = Math.atan2(sp.y - cy, sp.x - cx);
+  const k = Math.min((x1 - x0) / 2 / Math.abs(Math.cos(ang) || 1e-6), (y1 - y0) / 2 / Math.abs(Math.sin(ang) || 1e-6));
+  let x = cx + Math.cos(ang) * k, y = cy + Math.sin(ang) * k;
+  if (x > cam.w - 210 && y < 205) { if (Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang))) y = 210; else x = cam.w - 215; }
+  return { x, y, ang };
+}
+
 export const TEAM_COLOR = { blue: '#5fb4ff', red: '#ff6a55' };
 export const TEAM_RGB = { blue: '95,180,255', red: '255,106,85' };
 
@@ -539,6 +552,17 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255,190,120,0.9)';
         ctx.fillText(s.outReason.toUpperCase(), sp.x, ly + 13);
       }
+      if (mine && s.alive) {
+        // incoming enemy salvo: time until the nearest one lands around us
+        let tIn = Infinity;
+        for (const sh of world.shells) if (sh.team !== s.team && dist(sh.target, s.pos) < 450) tIn = Math.min(tIn, sh.T - sh.t);
+        if (tIn < Infinity && tIn > 0) {
+          const pulse = 0.65 + 0.35 * Math.sin(this.time * 9);
+          ctx.font = '600 11px "IBM Plex Mono", monospace';
+          ctx.fillStyle = `rgba(255,150,90,${pulse})`;
+          ctx.fillText(`INCOMING ${tIn.toFixed(1)}s`, sp.x, sp.y + Math.min(r, 40) + 20);
+        }
+      }
       // camera lock indicator
       if (ov.lockId === s.id) {
         const a = this.time * 0.8;
@@ -551,14 +575,9 @@ export class Renderer {
     // off-screen enemy pointers
     if (ov.player) for (const s of world.ships) {
       if (s.team === ov.player.team || !s.alive) continue;
-      const sp = cam.worldToScreen(s.pos);
-      const m = 30;
-      if (sp.x > m && sp.y > m && sp.x < cam.w - m && sp.y < cam.h - m) continue;
-      const cx = cam.w / 2, cy = cam.h / 2;
-      const ang = Math.atan2(sp.y - cy, sp.x - cx);
-      const kx = (cam.w / 2 - m) / Math.abs(Math.cos(ang) || 1e-6), ky = (cam.h / 2 - m) / Math.abs(Math.sin(ang) || 1e-6);
-      const k = Math.min(kx, ky);
-      const x = cx + Math.cos(ang) * k, y = cy + Math.sin(ang) * k;
+      const ep = edgePointer(cam, cam.worldToScreen(s.pos));
+      if (!ep) continue;
+      const { x, y, ang } = ep;
       ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
       ctx.fillStyle = TEAM_COLOR[s.team];
       ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -7); ctx.lineTo(-3, 0); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill();
@@ -734,7 +753,7 @@ export class Renderer {
 
     // ---------- lead indicator: where a target near the cursor will be when shells land
     for (const s of world.ships) {
-      if (s.team === p.team || !s.alive) continue;
+      if (s.team === p.team || !s.alive || s.outOfAction) continue;
       const d = dist(s.pos, aim);
       if (d > Math.max(2500, 200 / zoom)) continue;
       const tof2 = flightTime(dist(p.pos, s.pos));
