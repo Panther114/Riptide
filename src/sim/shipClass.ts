@@ -174,7 +174,7 @@ export const IOWA: ShipClass = {
   reserveBuoyancy: 19000,
   pumpRate: 4.5,
   maxRange: 26000,
-  reloadTime: 17,
+  reloadTime: 15,
   dispersion: { base: 20, perKm: 3.4, rangeRatio: 1.65 },
   hull: buildHull(),
   freeboard: iowaFreeboard,

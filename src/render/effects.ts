@@ -18,7 +18,7 @@ export interface Particle {
   drag: number;
 }
 
-const MAX = 6000;
+const MAX = 3500;
 
 let foamCv: HTMLCanvasElement | null = null;
 /** Speckled foam patch: lacy white bubbles fading towards the rim. */
@@ -185,13 +185,23 @@ export class Effects {
   }
 
   // ------------------------------------------------------------- drawing
-  draw(ctx: CanvasRenderingContext2D, zoom: number, layer: 'low' | 'high') {
+  /** view: world-space bounds for culling. Additive particles are drawn in a second pass to avoid state thrash. */
+  draw(ctx: CanvasRenderingContext2D, zoom: number, layer: 'low' | 'high', view?: { x0: number; y0: number; x1: number; y1: number }) {
     const px = 1 / zoom; // metres per pixel
+    for (const additive of [false, true]) {
+    if (additive) ctx.globalCompositeOperation = 'lighter';
     for (const p of this.ps) {
       const t = p.age / p.life;
       const low = p.k === 'foam' || p.k === 'ring' || p.k === 'mist';
       if ((layer === 'low') !== low) continue;
-      const r = Math.max(p.r, px * 0.8);
+      const add = p.k === 'flash' || p.k === 'blast' || p.k === 'fire' || p.k === 'spark' || p.k === 'ember';
+      if (add !== additive) continue;
+      // keep gun flashes, blasts and splash columns readable when zoomed far out
+      const minPx = p.k === 'flash' ? 7 : p.k === 'blast' ? 4 : p.k === 'splash' && p.vz === 0 && p.vx === 0 ? 2.2 : 0.8;
+      const r = Math.max(p.r, px * minPx);
+      if (view && (p.x + r < view.x0 || p.x - r > view.x1 || p.y + r < view.y0 || p.y - r > view.y1)) continue;
+      // sub-pixel smoke at far zoom is invisible: skip it
+      if (!additive && r < px * 0.6 && p.k !== 'splash') continue;
       switch (p.k) {
         case 'foam': {
           ctx.globalAlpha = p.a * (1 - t) * (1 - t) * (t < 0.05 ? t / 0.05 : 1);
@@ -223,20 +233,16 @@ export class Effects {
           break;
         }
         case 'flash': case 'blast': case 'fire': {
-          ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = p.a * (1 - t) * (p.k === 'fire' ? Math.min(1, (1 - t) * 1.6) : 1);
           ctx.drawImage(soft(p.c, true), p.x - r, p.y - r, r * 2, r * 2);
-          ctx.globalCompositeOperation = 'source-over';
           break;
         }
         case 'spark': case 'ember': {
-          ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = p.a * (1 - t);
           ctx.strokeStyle = `rgb(${p.c})`;
           ctx.lineWidth = Math.max(px * 1.5, r);
           const lx = p.vx * 0.04, ly = p.vy * 0.04;
           ctx.beginPath(); ctx.moveTo(p.x - lx, p.y - ly - p.z * 0.3); ctx.lineTo(p.x, p.y - p.z * 0.3); ctx.stroke();
-          ctx.globalCompositeOperation = 'source-over';
           break;
         }
         case 'debris': {
@@ -247,6 +253,8 @@ export class Effects {
         }
       }
     }
+    }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
 }

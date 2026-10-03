@@ -78,6 +78,7 @@ export class CaptainAI {
   private side = 1;                // which side we present: +1 keep target to starboard
   private sideTimer = 0;
   private telegraph = 4;
+  private speedOrder = 4;
   private observing: { salvo: number; target: number; errs: number[]; latErrs: number[]; t: number }[] = [];
   private reactTimer = 0;
   private holdFire = 0;
@@ -182,6 +183,8 @@ export class CaptainAI {
       if (this.weaveTimer <= 0) {
         this.weave = (this.rng.next() - 0.5) * 2 * 24 * DEG;
         this.weaveTimer = 18 + this.rng.next() * 22;
+        // occasionally change speed too: it spoils the enemy's rate solution
+        this.speedOrder = this.rng.next() < 0.3 ? 3 : 4;
       }
       desired = wrapAngle(desired + this.weave);
     }
@@ -206,7 +209,7 @@ export class CaptainAI {
     const err = angleDiff(me.heading, desired);
     cmd.rudder = clamp(err * 2.6 - me.yawRate * 18, -1, 1);
     if (Math.abs(cmd.rudder) < 0.06) cmd.rudder = 0;
-    this.telegraph = 4;
+    this.telegraph = this.speedOrder;
     cmd.telegraph = this.telegraph;
 
     // ------------------------------------------------ gunnery

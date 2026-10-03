@@ -15,7 +15,7 @@ for (let k = 0; k < Number(process.argv[2] ?? 6); k++) {
     if (Math.round(w.time * 30) % 1800 === 0) ranges.push(Math.round(Math.hypot(w.ships[0].pos.x - w.ships[1].pos.x, w.ships[0].pos.y - w.ships[1].pos.y) / 100) / 10);
   }
   const loser = w.ships.find((s) => s.outOfAction)!;
-  console.log(`#${k} t=${w.time.toFixed(0)} ${loser.name}: ${loser.outReason}; ranges(km/min)=${ranges.join(',')}`);
+  console.log(`#${k} t=${w.time.toFixed(0)} ${loser.name}: ${loser.outReason}; hits ${w.ships.map((s) => s.stats.hits + '/' + s.stats.shells).join(' ')} ranges=${ranges.join(',')}`);
   console.log('   turrets:', loser.turrets.map((t) => `${t.def.id} lvl${loser.mod(t.def.id).level} mag${loser.mod(t.def.magazine).level}${loser.mod(t.def.magazine).flooded ? 'F' : ''} ammo${JSON.stringify(loser.ammo.get(t.def.magazine))}`).join(' | '));
   console.log('   flood', Math.round(loser.floodTotal), 'kinds', JSON.stringify(kinds));
 }

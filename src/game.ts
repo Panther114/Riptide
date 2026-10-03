@@ -108,6 +108,7 @@ export class Game {
     const cam = this.renderer.camera;
     const dt = Math.min(dtReal, 0.05);
     const me = this.player;
+    this.renderer.trackPerf(dtReal);
 
     if (this.mode === 'battle' && !this.paused) {
       // ---- controls

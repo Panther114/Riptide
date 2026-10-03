@@ -22,6 +22,7 @@ export class Hud {
   private minimap: HTMLCanvasElement;
   private mmCtx: CanvasRenderingContext2D;
   private tick = 0;
+  private canvasTick = 1;
   private help: HTMLElement;
   private banner: HTMLElement;
 
@@ -73,6 +74,7 @@ export class Hud {
       <div class="k"><b>Wheel</b> zoom · <b>MMB</b> lock camera</div>
       <div class="k"><b>H</b> hide help · <b>Esc</b> pause</div>`);
     this.root.appendChild(this.help);
+    setTimeout(() => this.help.classList.add('hidden'), 35000);
     this.buildHelm();
   }
 
@@ -173,11 +175,16 @@ export class Hud {
   // ------------------------------------------------------------ main update
   update(world: World, me: Ship | null, dt: number, rudderHeld: number, focusId: number | null) {
     this.tick += dt;
-    if (me) {
-      this.status.draw(me, dt, world.time);
-      this.drawRudder(me, rudderHeld);
+    this.canvasTick += dt;
+    // canvases redraw at ~30 Hz: plenty for gauges, cheaper on integrated GPUs
+    if (this.canvasTick >= 1 / 30) {
+      if (me) {
+        this.status.draw(me, this.canvasTick, world.time);
+        this.drawRudder(me, rudderHeld);
+      }
+      this.drawMinimap(world, me, focusId);
+      this.canvasTick = 0;
     }
-    this.drawMinimap(world, me, focusId);
     if (this.tick < 0.1) return;
     this.tick = 0;
     this.updateTop(world, me);

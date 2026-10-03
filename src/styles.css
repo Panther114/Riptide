@@ -1,5 +1,5 @@
 :root {
-  --panel: rgba(8, 19, 25, 0.74);
+  --panel: rgba(8, 19, 25, 0.84);
   --panel-2: rgba(14, 30, 38, 0.82);
   --line: rgba(198, 224, 234, 0.13);
   --line-2: rgba(198, 224, 234, 0.24);
@@ -28,7 +28,7 @@ canvas.water { z-index: 0; }
 body[data-state=battle] canvas.world { cursor: none; }
 
 /* ---------------------------------------------------------------- panels */
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); }
 .panel-title { display: flex; justify-content: space-between; align-items: center; font-family: var(--cond); font-weight: 600; font-size: 11.5px; letter-spacing: 0.14em; color: var(--muted); padding: 7px 10px 5px; border-bottom: 1px solid var(--line); }
 .panel-title span:last-child { color: var(--text); opacity: 0.8; letter-spacing: 0.08em; }
 
@@ -39,7 +39,7 @@ body[data-state=battle] canvas.world { cursor: none; }
 .hud-top { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px; align-items: flex-start; }
 .hud-top .team { display: flex; gap: 6px; }
 .hud-top .team.blue { justify-content: flex-end; }
-.ship-card { min-width: 130px; padding: 6px 10px 7px; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; backdrop-filter: blur(6px); }
+.ship-card { min-width: 130px; padding: 6px 10px 7px; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; }
 .ship-card.blue { border-top: 2px solid var(--blue); }
 .ship-card.red { border-top: 2px solid var(--red); }
 .ship-card.out { opacity: 0.55; }

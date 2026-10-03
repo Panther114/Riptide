@@ -42,6 +42,7 @@ export class Renderer {
   /** Water is low-frequency: render it below native resolution for speed. */
   waterScale = new URLSearchParams(location.search).has('lowgpu') ? 0.35 : 0.75;
   time = 0;
+  private view = { x0: 0, y0: 0, x1: 0, y1: 0 };
 
   constructor(glCanvas: HTMLCanvasElement, canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -56,8 +57,28 @@ export class Renderer {
     return a;
   }
 
+  /** Upper bound on canvas pixel density; lowered automatically on slow GPUs. */
+  maxDpr = 2;
+  private perf = { t: 0, n: 0, slow: 0 };
+
+  /** Adaptive quality: if frames are consistently slow, render at lower density. */
+  trackPerf(dtReal: number) {
+    const p = this.perf;
+    p.t += dtReal; p.n++;
+    if (p.t < 2) return;
+    const fps = p.n / p.t;
+    p.t = 0; p.n = 0;
+    if (fps < 42) p.slow++; else p.slow = Math.max(0, p.slow - 1);
+    if (p.slow >= 2) {
+      p.slow = 0;
+      const cur = Math.min(window.devicePixelRatio || 1, this.maxDpr);
+      if (cur > 1) { this.maxDpr = Math.max(1, cur - 0.5); this.resize(); }
+      else if (this.waterScale > 0.5) { this.waterScale = 0.5; this.resize(); }
+    }
+  }
+
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
     const w = window.innerWidth, h = window.innerHeight;
     for (const c of [this.canvas, this.water.canvas]) {
       const k = c === this.water.canvas ? this.waterScale : 1;
@@ -90,7 +111,7 @@ export class Renderer {
     this.fx.update(dt);
     this.wakeTimer -= dt;
     const sample = this.wakeTimer <= 0;
-    if (sample) this.wakeTimer = 0.25;
+    if (sample) this.wakeTimer = 0.4;
     for (const s of world.ships) {
       if (s.status === 'sunk') continue;
       let w = this.wakes.get(s.id);
@@ -153,11 +174,14 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
     this.drawWakes(ctx, world, px);
-    this.fx.draw(ctx, z, 'low');
+    const tl = cam.screenToWorld({ x: 0, y: 0 }), br = cam.screenToWorld({ x: cam.w, y: cam.h });
+    const view = { x0: tl.x, y0: tl.y, x1: br.x, y1: br.y };
+    this.view = view;
+    this.fx.draw(ctx, z, 'low', view);
     if (ov.showOverlay) this.drawWorldOverlayLow(ctx, world, ov, px);
     for (const s of world.ships) if (s.status !== 'sunk') this.drawShip(ctx, s, px);
     this.drawShells(ctx, world, px);
-    this.fx.draw(ctx, z, 'high');
+    this.fx.draw(ctx, z, 'high', view);
 
     // screen-space overlay
     ctx.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
@@ -200,6 +224,8 @@ export class Renderer {
     for (const s of world.ships) {
       const w = this.wakes.get(s.id);
       if (!w || w.length < 2) continue;
+      const v = this.view, m = 2500;
+      if (s.pos.x < v.x0 - m || s.pos.x > v.x1 + m || s.pos.y < v.y0 - m || s.pos.y > v.y1 + m) continue;
       const pts = [...w];
       if (s.status !== 'sunk') {
         const stern = s.localToWorld({ x: -s.cls.length / 2 + 8, y: 0 });
@@ -228,23 +254,25 @@ export class Renderer {
         for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i].x, R[i].y);
         ctx.closePath(); ctx.fill();
       }
-      // Kelvin wake arms (~19.5°) spreading from the track, fading with age
+      // Kelvin wake arms (~19.5°) spreading from the track, fading with age (batched in chunks)
+      const CH = 6;
       for (const side of [-1, 1]) {
-        let prev: Vec2 | null = null;
-        for (let i = 0; i < pts.length; i++) {
-          const p = pts[i];
-          const age = now - p.t;
-          const spread = 10 + age * p.v * 0.354 * 0.6;
-          const q = { x: p.x - p.hy * spread * side, y: p.y + p.hx * spread * side };
-          if (prev) {
-            const a = 0.24 * clamp01(p.v / 9) * Math.pow(clamp01(1 - age / 60), 1.6);
-            if (a > 0.01) {
-              ctx.strokeStyle = `rgba(222,236,240,${a})`;
-              ctx.lineWidth = Math.max(px * 1.1, 2.2 + age * 0.06);
-              ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(q.x, q.y); ctx.stroke();
-            }
+        for (let c0 = 0; c0 < pts.length - 1; c0 += CH) {
+          const mid = pts[Math.min(pts.length - 1, c0 + (CH >> 1))];
+          const age = now - mid.t;
+          const a = 0.24 * clamp01(mid.v / 9) * Math.pow(clamp01(1 - age / 55), 1.6);
+          if (a < 0.01) continue;
+          ctx.beginPath();
+          for (let i = c0; i <= Math.min(pts.length - 1, c0 + CH); i++) {
+            const p = pts[i];
+            const ag = now - p.t;
+            const spread = 10 + ag * p.v * 0.354 * 0.6;
+            const x = p.x - p.hy * spread * side, y = p.y + p.hx * spread * side;
+            if (i === c0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
-          prev = q;
+          ctx.strokeStyle = `rgba(222,236,240,${a})`;
+          ctx.lineWidth = Math.max(px * 1.1, 2.2 + age * 0.06);
+          ctx.stroke();
         }
       }
       // bow wave: foam lines peeling off the stem and running along the flanks
@@ -695,6 +723,13 @@ export class Renderer {
     ctx.fillStyle = `rgba(${col},0.95)`; ctx.fillText(label, cx + 37, cy - 4);
     ctx.font = '500 11px "IBM Plex Mono", monospace';
     ctx.fillStyle = 'rgba(210,225,230,0.8)'; ctx.fillText(`${tof.toFixed(1)} s`, cx + 37, cy + 10);
+    // countdown to the fall of our most recent salvo
+    let next = Infinity;
+    for (const sh of world.shells) if (sh.shooter === p.id) next = Math.min(next, sh.T - sh.t);
+    if (next < Infinity) {
+      ctx.fillStyle = 'rgba(255,214,140,0.95)';
+      ctx.fillText(`SPLASH ${next.toFixed(1)}`, cx + 37, cy + 24);
+    }
 
     // ---------- lead indicator: where a target near the cursor will be when shells land
     for (const s of world.ships) {
