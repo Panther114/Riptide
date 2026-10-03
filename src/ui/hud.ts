@@ -38,6 +38,7 @@ export class Hud {
 
     this.banner = el('div', 'hud-banner');
     this.root.appendChild(this.banner);
+    this.root.appendChild(el('div', 'hud-warn'));
 
     const mmWrap = el('div', 'hud-minimap panel');
     this.minimap = document.createElement('canvas');
@@ -72,6 +73,7 @@ export class Hud {
       <div class="k"><b>LMB</b> fire ready turrets</div>
       <div class="k"><b>1</b>/<b>2</b> load AP / HC</div>
       <div class="k"><b>Wheel</b> zoom · <b>MMB</b> lock camera</div>
+      <div class="k"><b>Tab</b> next ship (fleet battles)</div>
       <div class="k"><b>H</b> hide help · <b>Esc</b> pause</div>`);
     this.root.appendChild(this.help);
     setTimeout(() => this.help.classList.add('hidden'), 35000);
@@ -189,6 +191,15 @@ export class Hud {
     this.tick = 0;
     this.updateTop(world, me);
     if (!me) return;
+
+    // leaving the battle area / fleet hand-over hints
+    const warn = this.root.querySelector('.hud-warn') as HTMLElement;
+    let wtxt = '';
+    const beyond = Math.max(Math.abs(me.pos.x), Math.abs(me.pos.y)) > world.mapHalf;
+    if (me.alive && !me.outOfAction && (beyond || me.outOfBoundsTime > 0)) wtxt = me.outOfBoundsTime > 0 ? `RETURN TO THE BATTLE AREA · ${Math.max(0, 60 - me.outOfBoundsTime).toFixed(0)} s` : 'LEAVING THE BATTLE AREA';
+    else if (me.outOfAction && world.ships.some((s) => s.team === me.team && !s.outOfAction && s.status === 'active')) wtxt = 'PRESS TAB TO TAKE COMMAND OF ANOTHER SHIP';
+    warn.textContent = wtxt;
+    warn.classList.toggle('show', !!wtxt);
 
     // helm text
     const kn = me.speed / 0.5144;

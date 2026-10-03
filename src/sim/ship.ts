@@ -255,7 +255,7 @@ export class Ship {
     this.pos.x += (fwd.x * this.speed + side.x * slip) * dt;
     this.pos.y += (fwd.y * this.speed + side.y * slip) * dt;
 
-    const out = Math.abs(this.pos.x) > mapHalf || Math.abs(this.pos.y) > mapHalf;
+    const out = Math.abs(this.pos.x) > mapHalf + 1500 || Math.abs(this.pos.y) > mapHalf + 1500;
     this.outOfBoundsTime = out ? this.outOfBoundsTime + dt : Math.max(0, this.outOfBoundsTime - dt * 2);
   }
 

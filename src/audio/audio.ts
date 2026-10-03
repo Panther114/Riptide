@@ -157,6 +157,20 @@ export class Audio {
     n.connect(f).connect(g).connect(this.master); n.start(t, Math.random() * 2); n.stop(t + dur + 0.1);
   }
 
+  /** Distance-independent confirmation that our salvo did harm. */
+  confirm(strength: number) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(140 + strength * 40, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.25);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18 + strength * 0.08, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.4);
+    const n = this.noiseSrc(1.6);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 3;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(0.06 * (1 + strength), t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    n.connect(f).connect(ng).connect(this.master); n.start(t, Math.random()); n.stop(t + 0.15);
+  }
+
   ui(kind: 'click' | 'tick' | 'alarm' | 'ammo') {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

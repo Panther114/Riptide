@@ -41,8 +41,8 @@ void main(){
   vec3 sun = normalize(vec3(-0.55, -0.62, 0.56));
   float diff = clamp(dot(n, sun), 0.0, 1.0);
   float big = texture2D(uTex, UV(26000.0, vec2(0.0)) + 0.5).a;
-  vec3 deep = vec3(0.032, 0.125, 0.168);
-  vec3 mid  = vec3(0.058, 0.215, 0.262);
+  vec3 deep = vec3(0.036, 0.142, 0.190);
+  vec3 mid  = vec3(0.066, 0.240, 0.292);
   vec3 col = mix(deep, mid, smoothstep(0.3, 0.75, big));
   col *= 0.70 + diff*0.62;
   col += vec3(0.02, 0.05, 0.05) * (h - 1.0);

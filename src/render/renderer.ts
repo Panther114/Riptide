@@ -579,13 +579,14 @@ export class Renderer {
       const k = t.t / t.life;
       const a = k < 0.08 ? k / 0.08 : 1 - clamp01((k - 0.6) / 0.4);
       let y = sp.y - 22 - Math.min(t.t, 1.2) * 12;
-      const w = t.sub ? 150 : 90, hgt = t.sub ? 30 : 17;
-      for (let guard = 0; guard < 8; guard++) {
-        const hit = placed.find((b) => sp.x + w / 2 > b.x0 && sp.x - w / 2 < b.x1 && y + 4 > b.y0 && y - hgt + 4 < b.y1 + 0);
+      const w = t.sub ? 168 : 100;
+      const up = t.big ? 16 : 13, down = t.sub ? 17 : 4;
+      for (let guard = 0; guard < 10; guard++) {
+        const hit = placed.find((b) => sp.x + w / 2 > b.x0 && sp.x - w / 2 < b.x1 && y + down > b.y0 && y - up < b.y1);
         if (!hit) break;
-        y = hit.y0 - 4;
+        y = hit.y0 - down - 3;
       }
-      placed.push({ x0: sp.x - w / 2, x1: sp.x + w / 2, y0: y - (t.big ? 17 : 13), y1: y + (t.sub ? 16 : 3) });
+      placed.push({ x0: sp.x - w / 2, x1: sp.x + w / 2, y0: y - up, y1: y + down });
       ctx.globalAlpha = a;
       ctx.textAlign = 'center';
       ctx.font = `700 ${t.big ? 17 : 13}px "Barlow Condensed", sans-serif`;

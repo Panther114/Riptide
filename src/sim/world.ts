@@ -54,6 +54,7 @@ export class World {
   private nextId = 1;
   private salvoId = 1;
   private shellId = 1;
+  private contacts = new Map<number, number>();
 
   constructor(cfg: BattleConfig) {
     this.cfg = cfg;
@@ -112,7 +113,7 @@ export class World {
       const tp = s.turretWorld(t);
       const bearing = s.turretBearing(t);
       let range = Math.min(dist(tp, aim), s.cls.maxRange);
-      range = Math.max(range, 600);
+      range = Math.max(range, 150);
       const intended = add(tp, fromAngle(bearing, range));
       const disp = s.dispersionAt(range);
       const fwd = fromAngle(bearing), lat = { x: -fwd.y, y: fwd.x };
@@ -251,14 +252,26 @@ export class World {
       this.emit({ type: 'outOfAction', ship: s, reason: s.outReason });
       return;
     }
-    if (s.outOfBoundsTime > 25) {
+    if (s.outOfBoundsTime > 60) {
       s.setOutOfAction('Withdrew from the battle area');
       this.emit({ type: 'outOfAction', ship: s, reason: s.outReason });
     }
   }
 
+  /** Battles are capped; at the limit the side with more fighting strength holds the field. */
+  timeLimit = 25 * 60;
+
   private checkEnd() {
     if (this.ended) return;
+    if (this.time >= this.timeLimit) {
+      const str = (t: TeamId) => this.ships.filter((s) => s.team === t && !s.outOfAction).reduce((a, s) => { const r = s.readiness(); return a + r.firepower * 0.6 + r.buoyancy * 0.25 + r.mobility * 0.15; }, 0);
+      const b = str('blue'), r = str('red');
+      this.ended = true;
+      this.winner = Math.abs(b - r) < 0.05 ? null : b > r ? 'blue' : 'red';
+      this.endTime = this.time;
+      this.emit({ type: 'end', winner: this.winner });
+      return;
+    }
     const teams: TeamId[] = ['blue', 'red'];
     const alive = teams.filter((t) => this.ships.some((s) => s.team === t && !s.outOfAction));
     if (alive.length < 2) {
@@ -287,14 +300,23 @@ export class World {
         }
       }
       if (pushed) {
-        const rel = Math.abs(a.speed) + Math.abs(b.speed);
-        a.speed *= 0.97; b.speed *= 0.97;
-        if (rel > 6 && this.rng.chance(0.02)) {
-          for (const s of [a, b]) this.sink.addHole(s, s === a ? 110 : 0, 15, -1, 1.5);
-          this.emit({ type: 'collision', a, b, pos: { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2 } });
+        // grinding contact costs a little way; a hard collision (closing fast) holes both hulls
+        const rel = Math.abs(a.speed - b.speed * Math.cos(a.heading - b.heading));
+        a.speed *= 0.995; b.speed *= 0.995;
+        const key = a.id * 1000 + b.id;
+        if (rel > 5 && !this.contacts.has(key)) {
+          const mid = { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2 };
+          for (const s of [a, b]) {
+            const lp = rotate(sub(mid, s.pos), -s.heading);
+            const x = clamp(lp.x, -125, 125);
+            this.sink.addHole(s, x, Math.sign(lp.y || 1) * 15, -1.5, 0.6 + rel * 0.06);
+          }
+          this.emit({ type: 'collision', a, b, pos: mid });
         }
+        this.contacts.set(key, this.time);
       }
     }
+    for (const [k, t] of this.contacts) if (this.time - t > 3) this.contacts.delete(k);
   }
 }
 

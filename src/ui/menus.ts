@@ -49,9 +49,9 @@ export class Menus {
     const el = h(`
       <div class="screen title-screen">
         <div class="title-block">
-          <div class="kicker">PACIFIC · 1944 · SURFACE ACTION</div>
+          <div class="kicker">WHAT-IF SURFACE ACTION · PACIFIC 1944</div>
           <h1>RIPTIDE</h1>
-          <div class="subtitle">A tactical battleship duel</div>
+          <div class="subtitle">Two Iowa-class sisters. Nine 16-inch guns each. One of them goes home.</div>
           <div class="menu-buttons">
             <button class="btn primary" data-a="quick"><span>Engage</span><small>1 v 1 battleship duel</small></button>
             <button class="btn" data-a="setup"><span>Battle Setup</span><small>place ships · teams · control</small></button>
@@ -106,8 +106,8 @@ export class Menus {
                 <li><b>Holes</b> below the waterline flood their section. As she settles, more holes go under. Flooding past reserve buoyancy sinks her.</li>
               </ul>
               <h3>Camera</h3>
-              <p><kbd>Wheel</kbd> zooms from the bridge wing to the whole battle area. <kbd>MMB</kbd> on a ship locks the camera on it; on open water returns to your own ship.</p>
-              <p><kbd>H</kbd> controls hint · <kbd>M</kbd> mute · <kbd>Esc</kbd> pause</p>
+              <p><kbd>Wheel</kbd> zooms from the bridge wing to the whole battle area. <kbd>MMB</kbd> on a ship — or on the arrow pointing to an off-screen enemy — locks the camera on it; on open water it returns to your own ship. Locking onto the enemy is the easiest way to aim: zoom in and lay the cursor ahead of the ghost hull.</p>
+              <p><kbd>Tab</kbd> take command of the next ship in fleet battles · <kbd>H</kbd> controls hint · <kbd>M</kbd> mute · <kbd>Esc</kbd> pause</p>
             </section>
           </div>
           <button class="btn primary back"><span>Back</span></button>

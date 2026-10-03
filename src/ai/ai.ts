@@ -193,7 +193,7 @@ export class CaptainAI {
     const edge = Math.max(Math.abs(me.pos.x), Math.abs(me.pos.y));
     if (edge > half) {
       const toCenter = Math.atan2(-me.pos.y, -me.pos.x);
-      const w = clamp((edge - half) / (world.mapHalf * 0.12), 0, 1);
+      const w = clamp((edge - half) / (world.mapHalf * 0.05), 0, 1);
       desired = wrapAngle(desired + angleDiff(desired, toCenter) * w);
     }
     // avoid collisions with any ship nearby
@@ -257,6 +257,8 @@ export class AIDirector {
   addCaptain(world: World, s: Ship) {
     this.captains.push(new CaptainAI(s, this.commanders.get(s.team)!, world.cfg.seed + s.id * 31, world.cfg.difficulty));
   }
+  /** Release a ship from AI control (a human takes the helm). */
+  removeCaptain(s: Ship) { this.captains = this.captains.filter((c) => c.ship !== s); }
   observe(events: WorldEvent[], world: World) {
     for (const e of events) for (const c of this.captains) c.observe(e, world);
   }

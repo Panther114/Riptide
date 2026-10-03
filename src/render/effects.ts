@@ -167,7 +167,7 @@ export class Effects {
       this.add({ k: 'fire', x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 4, vx: 0, vy: 0, r: 3 + Math.random() * 3 * intensity, gr: 3, life: 0.6 + Math.random() * 0.5, a: 0.9, c: Math.random() < 0.5 ? '255,140,40' : '255,190,80', drag: 2 });
     }
     if (Math.random() < dt * 5 * intensity) {
-      this.add({ k: 'smoke', x, y, vx: 0, vy: 0, r: 5 + intensity * 4, gr: 3.5, life: 10 + Math.random() * 8, a: 0.42 + intensity * 0.2, c: '24,22,21', drag: 0.7 });
+      this.add({ k: 'smoke', x, y, vx: 0, vy: 0, r: 5 + intensity * 4, gr: 3.5, life: 10 + Math.random() * 8, a: 0.26 + intensity * 0.16, c: '28,26,25', drag: 0.7 });
     }
   }
 

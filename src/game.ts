@@ -114,6 +114,7 @@ export class Game {
       // ---- controls
       if (inp.hit('KeyH')) this.hud?.toggleHelp();
       if (inp.hit('KeyM')) this.audio.toggleMute();
+      if (inp.hit('Tab')) this.switchShip();
       if (me && me.alive) {
         if (inp.hit('KeyW') || inp.hit('ArrowUp')) { this.cmd.telegraph = clamp(this.cmd.telegraph + 1, -2, 4); this.audio.ui('tick'); }
         if (inp.hit('KeyS') || inp.hit('ArrowDown')) { this.cmd.telegraph = clamp(this.cmd.telegraph - 1, -2, 4); this.audio.ui('tick'); }
@@ -194,6 +195,28 @@ export class Game {
     if (this.hud) this.hud.update(this.world, me, this.paused ? 0 : dt, this.cmd.rudder, this.lockId);
   }
 
+  /** Take command of the next fighting ship of our team (fleet battles). */
+  switchShip() {
+    const me = this.player;
+    if (!me) return;
+    const allies = this.world.ships.filter((s) => s.team === me.team && !s.outOfAction && s.status === 'active');
+    if (!allies.length) return;
+    const idx = allies.findIndex((s) => s.id === me.id);
+    const next = allies[(idx + 1) % allies.length];
+    if (next.id === me.id) return;
+    // the old ship goes back to the AI (if still fighting); the new one comes to us
+    if (!me.outOfAction) { me.controller = 'ai'; this.ai.addCaptain(this.world, me); }
+    me.cmd.fire = false;
+    this.ai.removeCaptain(next);
+    next.controller = 'player';
+    this.playerId = next.id;
+    this.cmd = { ...next.cmd, fire: false, aim: null };
+    this.lockId = null;
+    this.renderer.camera.refocus();
+    this.audio.ui('click');
+    this.hud?.showBanner(`<div class="b-k">TAKING COMMAND</div><div class="b-s">USS ${next.name.toUpperCase()}</div>`, 2200);
+  }
+
   private pickLock(w: Vec2) {
     const cam = this.renderer.camera;
     let best: Ship | null = null, bd = Infinity;
@@ -204,6 +227,18 @@ export class Game {
       const d = dist(w, s.pos);
       const slop = 28 / cam.zoom;
       if ((inside || d < Math.max(slop, s.cls.length * 0.6)) && d < bd) { bd = d; best = s; }
+    }
+    // the edge-of-screen pointers to off-screen ships are clickable too
+    if (!best) {
+      const m = this.input.mouse;
+      for (const s of this.world.ships) {
+        if (s.status === 'sunk' || s.id === this.playerId) continue;
+        const sp = cam.worldToScreen(s.pos);
+        if (sp.x > 30 && sp.y > 30 && sp.x < cam.w - 30 && sp.y < cam.h - 30) continue;
+        const cx = cam.w / 2, cy = cam.h / 2, ang = Math.atan2(sp.y - cy, sp.x - cx);
+        const k = Math.min((cam.w / 2 - 30) / Math.abs(Math.cos(ang) || 1e-6), (cam.h / 2 - 30) / Math.abs(Math.sin(ang) || 1e-6));
+        if (Math.hypot(cx + Math.cos(ang) * k - m.x, cy + Math.sin(ang) * k - m.y) < 45) { best = s; break; }
+      }
     }
     const prev = this.lockId;
     this.lockId = best && best.id !== this.playerId ? best.id : null;
@@ -254,7 +289,7 @@ export class Game {
         }
         case 'splash': {
           const dye = e.shell.team === 'blue' ? '226,238,250' : '250,232,226';
-          fx.splash(e.pos.x, e.pos.y, e.shell.shell.id === 'HC' ? 1.0 : 1.15, dye);
+          fx.splash(e.pos.x, e.pos.y, e.shell.shell.id === 'HC' ? 1.5 : 1.7, dye);
           if (vol) this.audio.splash(earD(e.pos));
           if (me && e.shell.team !== me.team && dist(e.pos, me.pos) < 250) cam.addShake(0.18);
           this.trackSalvo(e.shell.salvo, e.pos, false, false);
@@ -366,6 +401,7 @@ export class Game {
       this.renderer.addText({ x: e.pos.x, y: e.pos.y, text: kt.t, sub: involved ? sub : undefined, color: kt.c, life: 3.2, big: r.kind === 'citadel' });
     }
     if (!involved) return;
+    if (e.shell.shooter === me.id && vol && !['nonpen', 'ricochet', 'shatter'].includes(r.kind)) this.audio.confirm(r.kind === 'citadel' ? 2 : r.modules.length ? 1 : 0);
     const mods = r.modules.filter((m) => m.dmg >= 4).sort((x, y) => y.dmg - x.dmg).slice(0, 2);
     const modTxt = mods.map((m) => {
       const lvl = r.ship.mod(m.id).level;
