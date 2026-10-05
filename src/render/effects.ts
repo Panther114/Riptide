@@ -87,25 +87,34 @@ export class Effects {
   }
 
   // ------------------------------------------------------------- emitters
-  muzzle(x: number, y: number, ang: number, guns: number) {
+  /** Gun blast. k scales with calibre (16" = 1). */
+  muzzle(x: number, y: number, ang: number, guns: number, o: { barrel?: number; spacing?: number; k?: number } = {}) {
     const fx = Math.cos(ang), fy = Math.sin(ang);
+    const barrel = o.barrel ?? 27, spacing = o.spacing ?? 2.6, k = o.k ?? 1;
+    const smokeN = Math.max(2, Math.round(9 * k));
     for (let g = 0; g < guns; g++) {
-      const off = (g - (guns - 1) / 2) * 2.6;
-      const mx = x + fx * 27 - fy * off, my = y + fy * 27 + fx * off;
-      this.add({ k: 'flash', x: mx + fx * 10, y: my + fy * 10, r: 22, gr: 40, life: 0.18, a: 1, c: '255,214,140' });
-      this.add({ k: 'flash', x: mx + fx * 32, y: my + fy * 32, r: 14, gr: 60, life: 0.12, a: 0.9, c: '255,245,215' });
-      for (let i = 0; i < 9; i++) {
-        const sp = 20 + Math.random() * 90, a2 = ang + (Math.random() - 0.5) * 0.7;
-        this.add({ k: 'smoke', x: mx + fx * 8, y: my + fy * 8, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, r: 7 + Math.random() * 6, gr: 6, life: 5 + Math.random() * 5, a: 0.3, c: '178,170,158', drag: 0.9 });
+      const off = (g - (guns - 1) / 2) * spacing;
+      const mx = x + fx * barrel - fy * off, my = y + fy * barrel + fx * off;
+      this.add({ k: 'flash', x: mx + fx * 10 * k, y: my + fy * 10 * k, r: 22 * k, gr: 40 * k, life: 0.18, a: 1, c: '255,214,140' });
+      this.add({ k: 'flash', x: mx + fx * 32 * k, y: my + fy * 32 * k, r: 14 * k, gr: 60 * k, life: 0.12, a: 0.9, c: '255,245,215' });
+      for (let i = 0; i < smokeN; i++) {
+        const sp = (20 + Math.random() * 90) * k, a2 = ang + (Math.random() - 0.5) * 0.7;
+        this.add({ k: 'smoke', x: mx + fx * 8 * k, y: my + fy * 8 * k, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, r: (7 + Math.random() * 6) * k, gr: 6 * k, life: 5 + Math.random() * 5, a: 0.3, c: '178,170,158', drag: 0.9 });
       }
-      for (let i = 0; i < 6; i++) {
+      if (k > 0.5) for (let i = 0; i < 6; i++) {
         const sp = 40 + Math.random() * 140, a2 = ang + (Math.random() - 0.5) * 0.4;
         this.add({ k: 'ember', x: mx, y: my, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp, z: 8, vz: 8 + Math.random() * 10, r: 0.8, life: 1.2, a: 1, c: '255,190,90', drag: 0.4 });
       }
     }
     // blast overpressure flattens the sea around the turret
-    this.add({ k: 'ring', x: x + fx * 30, y: y + fy * 30, r: 10, gr: 120, life: 0.55, a: 0.5, c: '230,238,240' });
-    this.add({ k: 'mist', x: x + fx * 26, y: y + fy * 26, r: 30, gr: 30, life: 1.4, a: 0.25, c: '220,225,225' });
+    this.add({ k: 'ring', x: x + fx * (barrel + 3 * k), y: y + fy * (barrel + 3 * k), r: 10 * k, gr: 120 * k, life: 0.55, a: 0.5 * Math.min(1, k + 0.3), c: '230,238,240' });
+    this.add({ k: 'mist', x: x + fx * barrel, y: y + fy * barrel, r: 30 * k, gr: 30 * k, life: 1.4, a: 0.25, c: '220,225,225' });
+  }
+
+  /** Torpedo leaving the tube: a small splash alongside. */
+  torpedoLaunch(x: number, y: number, ang: number) {
+    this.add({ k: 'splash', x: x + Math.cos(ang) * 6, y: y + Math.sin(ang) * 6, r: 3, gr: 3, life: 1.2, a: 0.8, c: '240,246,248', z: 0, vz: 0 });
+    this.add({ k: 'ring', x, y, r: 3, gr: 14, life: 0.9, a: 0.35, c: '235,245,248' });
   }
 
   splash(x: number, y: number, big: number, dye: string | null) {

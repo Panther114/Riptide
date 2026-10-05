@@ -12,6 +12,7 @@ import { Game } from './game';
 import { Input } from './input/input';
 import type { BattleConfig } from './sim/types';
 import { Menus, attractBattle, quickBattle } from './ui/menus';
+import { generateIslands } from './sim/terrain';
 
 const app = document.getElementById('app')!;
 const glCanvas = document.createElement('canvas'); glCanvas.className = 'layer water';
@@ -39,7 +40,7 @@ function toTitle() {
   game.start(attractBattle(), 'attract');
   setState('title');
   menus.title({
-    quick: () => { audio.ensure(); audio.ui('click'); startBattle(quickBattle(menus.difficulty)); },
+    quick: () => { audio.ensure(); audio.ui('click'); startBattle(quickBattle(menus.difficulty, undefined, menus.shipChoice)); },
     setup: () => { audio.ensure(); audio.ui('click'); toSetup(); },
     help: () => { audio.ensure(); audio.ui('click'); setState('manual'); menus.manual(toTitle); },
   });
@@ -51,6 +52,12 @@ function toSetup() {
   menus.setup(lastCfg, { start: (cfg) => { audio.ui('click'); startBattle(cfg); }, back: toTitle });
 }
 
+/** A fresh battle on the same waters: keep the islands, change the dice. */
+function reseed(cfg: BattleConfig): BattleConfig {
+  const islands = cfg.islands ?? (cfg.terrain && cfg.terrain !== 'open' ? generateIslands(cfg).map((i) => i.pts) : undefined);
+  return { ...cfg, islands, seed: Math.floor(Math.random() * 1e9) };
+}
+
 function startBattle(cfg: BattleConfig) {
   lastCfg = cfg;
   menus.clear();
@@ -60,7 +67,7 @@ function startBattle(cfg: BattleConfig) {
     setState('results');
     game.hud?.root.classList.add('faded');
     menus.results(world, me, {
-      again: () => { audio.ui('click'); startBattle({ ...cfg, seed: Math.floor(Math.random() * 1e9) }); },
+      again: () => { audio.ui('click'); startBattle(reseed(cfg)); },
       setup: () => { audio.ui('click'); toSetup(); },
       quit: () => { audio.ui('click'); toTitle(); },
     });
@@ -73,7 +80,7 @@ function pause() {
   setState('paused');
   menus.pause({
     resume,
-    restart: () => { if (lastCfg) startBattle({ ...lastCfg, seed: Math.floor(Math.random() * 1e9) }); },
+    restart: () => { if (lastCfg) startBattle(reseed(lastCfg)); },
     quit: () => toTitle(),
     volume: audio.volume,
     setVolume: (v) => { audio.setVolume(v); try { localStorage.setItem('riptide.volume', String(v)); } catch { /* ignore */ } },

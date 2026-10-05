@@ -7,7 +7,7 @@ import { penetration, testPlate, ArmorTest } from './ballistics';
 import type { ArmorZone, ShellDef, StructureDef } from './shipClass';
 import type { Ship } from './ship';
 
-export type HitKind = 'citadel' | 'pen' | 'overpen' | 'nonpen' | 'ricochet' | 'underwater' | 'he' | 'shatter';
+export type HitKind = 'citadel' | 'pen' | 'overpen' | 'nonpen' | 'ricochet' | 'underwater' | 'he' | 'shatter' | 'torpedo';
 
 export interface ModuleHit { id: string; name: string; dmg: number; before: number; after: number }
 
@@ -62,11 +62,12 @@ export function traceContact(ship: Ship, path: ShellPath): Contact | null {
   // start where the shell is 42 m up, or at the far edge of the ship bounding circle
   const sTop = 42 / tanF;
   const proj = -(L.x * d.x + L.y * d.y); // s at closest approach to origin
-  const sA = Math.min(sTop, proj + 150), sB = Math.max(-30, proj - 150);
+  const ext = cls.length / 2 + 20;
+  const sA = Math.min(sTop, proj + ext), sB = Math.max(-30, proj - ext);
   if (sA < sB) return null;
   // quick reject
   const perp = Math.abs(L.x * d.y - L.y * d.x);
-  if (perp > 150) return null;
+  if (perp > ext) return null;
 
   let prevIn = false, prevStruct: StructureDef | null = null, prevTur = -1;
   let first = true;
@@ -134,6 +135,7 @@ export interface DamageSink {
   addHole(ship: Ship, x: number, y: number, z: number, area: number): void;
   startFire(ship: Ship, x: number, y: number, band: 'low' | 'high', intensity: number): boolean;
   detonateMagazine(ship: Ship, x: number): void;
+  breakInTwo?(ship: Ship, x: number): void;
   rnd(): number;
 }
 
@@ -148,10 +150,14 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
   const zone = zoneAt(ship, c.p.x);
   const rise = ship.waterRise(c.p.x);
   const isHE = shell.id === 'HC';
+  // effects scale with calibre (16" = 1)
+  const cal = shell.caliber / 406;
+  const calR = Math.max(0.45, Math.sqrt(cal));
+  const calA = Math.max(0.12, Math.pow(cal, 1.3));
 
   const explodeAt = (x: number, y: number, z: number, band: 'low' | 'high', power: number, forward = true) => {
     rep.det = { x, y, z };
-    const blastR = isHE ? 15 : 11;
+    const blastR = (isHE ? 15 : 11) * calR;
     for (const m of ship.modules.values()) {
       const md = m.def;
       if (md.band !== band && !(band === 'high' && md.kind === 'turret')) continue;
@@ -165,7 +171,7 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
       if (forward && !isHE) {
         const cx = (r.x0 + r.x1) / 2 - x, cy = (r.y0 + r.y1) / 2 - y;
         const along = cx * d.x + cy * d.y, across = Math.abs(cx * d.y - cy * d.x);
-        if (along > 0 && along < 22 && across < 6 + along * 0.4) f = Math.max(f, 0.38);
+        if (along > 0 && along < 22 * calR && across < (6 + along * 0.4) * calR) f = Math.max(f, 0.38);
       }
       if (md.kind === 'turret' && band === 'high' && dd > 0) f *= 0.3; // armoured gunhouse shrugs off nearby blasts
       if (f <= 0) continue;
@@ -182,7 +188,7 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
     const fc = shell.fireChance * (band === 'high' ? 1 : 0.55);
     if (rnd() < fc) { rep.fire = sink.startFire(ship, x, y, band, 0.6 + rnd() * 0.4) || rep.fire; }
     // holes from detonation near the waterline
-    if (z < 2.5) { sink.addHole(ship, x, y, z + rise, isHE ? 1.1 : 1.5); rep.flooding = true; }
+    if (z < 2.5) { sink.addHole(ship, x, y, z + rise, (isHE ? 1.1 : 1.5) * calA); rep.flooding = true; }
   };
 
   // ---------------------------------------------------- turrets
@@ -238,7 +244,7 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
     if (st.conning) {
       if (test.result === 'pen') {
         rep.kind = 'pen';
-        const h = sink.damageModule(ship, 'bridge', shell.burst * 1.4, 'AP');
+        const h = sink.damageModule(ship, st.module ?? 'bridge', shell.burst * 1.4, 'AP');
         if (h) rep.modules.push(h);
         rep.text = 'Penetrated conning tower';
       } else { rep.kind = test.result === 'ricochet' ? 'ricochet' : 'nonpen'; rep.text = 'Conning tower armour held'; }
@@ -279,8 +285,8 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
     const underwater = c.z < 0;
     let plate: number, label: string, incline = 0;
     if (c.z > zone.beltTop - rise) { plate = zone.upperSide; label = 'upper side plating'; }
-    else if (c.z >= zone.beltBottom - rise) { plate = zone.belt; incline = zone.beltIncline; label = zone.citadel ? (zone.belt > 330 ? 'steering gear armour' : 'main belt') : 'bow/stern plating'; }
-    else { plate = zone.lowerBelt; incline = zone.beltIncline; label = zone.citadel ? 'lower belt (below waterline)' : 'hull below waterline'; }
+    else if (c.z >= zone.beltBottom - rise) { plate = zone.belt; incline = zone.beltIncline; label = zone.beltName ?? (zone.citadel ? 'main belt' : 'bow/stern plating'); }
+    else { plate = zone.lowerBelt; incline = zone.beltIncline; label = zone.citadel && zone.belt >= 50 ? 'lower belt (below waterline)' : 'hull below waterline'; }
     if (underwater) v *= 0.7;
     const n = sideNormal(ship, c.p, incline);
     const test = testPlate(plate, dir, n, v, shell, rnd);
@@ -296,16 +302,37 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
       } else {
         rep.text = test.result === 'ricochet' ? `Ricochet off ${label}` : `${label[0].toUpperCase() + label.slice(1)} held`;
       }
-      if (underwater && plate < 200) { sink.addHole(ship, c.p.x, c.p.y, c.z + rise, 0.6); rep.flooding = true; }
+      if (underwater && plate < 200) { sink.addHole(ship, c.p.x, c.p.y, c.z + rise, 0.6 * calA); rep.flooding = true; }
       return rep;
     }
     // penetrated the side
-    sink.addHole(ship, c.p.x, c.p.y, c.z + rise, underwater ? 1.3 : 0.5);
+    sink.addHole(ship, c.p.x, c.p.y, c.z + rise, (underwater ? 1.3 : 0.5) * calA);
     if (c.z + rise < ship.waterRise(c.p.x) + 1.5) rep.flooding = true;
     arm(test.effective, residual(test));
     v = residual(test) * 0.98;
     belowArmorDeck = zone.citadel && c.z <= zone.beltTop - rise;
     rep.kind = underwater ? 'underwater' : 'pen';
+    // German "turtleback": a sloped armour deck behind the belt must also be defeated
+    if (zone.slope && belowArmorDeck) {
+      const a = zone.slope.angle, sgn = c.p.y >= 0 ? 1 : -1;
+      // a belt this heavy strips the AP cap: the bare shell meets the slope at a glancing angle
+      const decapped = plate >= shell.caliber * 0.3;
+      const sl = testPlate(zone.slope.thickness, dir, [0, sgn * Math.sin(a), Math.cos(a)], v, shell, rnd, !decapped);
+      rep.deck = sl;
+      if (sl.result !== 'pen') {
+        if (armed) {
+          explodeAt(c.p.x + d.x * 2, c.p.y + d.y * 2, c.z, 'high', shell.burst * 0.55, false);
+          rep.kind = 'pen';
+          rep.text = `Penetrated ${label}, stopped by ${zone.slope.thickness} mm slope`;
+        } else {
+          rep.kind = sl.result === 'ricochet' ? 'ricochet' : 'nonpen';
+          rep.text = `${label[0].toUpperCase() + label.slice(1)} and ${zone.slope.thickness} mm slope held`;
+        }
+        return rep;
+      }
+      arm(sl.effective, residual(sl));
+      v = residual(sl);
+    }
   } else {
     // weather deck from above
     const test = testPlate(zone.weatherDeck, dir, [0, 0, 1], v, shell, rnd);
@@ -342,7 +369,7 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
     if (!inside || z < -ship.cls.draft + r) {
       // exited through the far side or the bottom
       rep.kind = rep.kind === 'underwater' ? 'underwater' : 'overpen';
-      if (z < 0.5) { sink.addHole(ship, x, y, z + r, 0.45); rep.flooding = true; }
+      if (z < 0.5) { sink.addHole(ship, x, y, z + r, 0.45 * calA); rep.flooding = true; }
       // light damage along the path
       for (const m of ship.modules.values()) {
         if (m.def.band !== (belowArmorDeck ? 'low' : 'high')) continue;
@@ -377,9 +404,10 @@ export function resolveHit(ship: Ship, path: ShellPath, c: Contact, sink: Damage
       if (travel >= fuzeDist) {
         const band: 'low' | 'high' = belowArmorDeck ? 'low' : 'high';
         explodeAt(x, y, z, band, shell.burst);
-        if (belowArmorDeck && zn.citadel) { rep.kind = rep.kind === 'underwater' ? 'underwater' : 'citadel'; }
-        const where = rep.modules.length ? rep.modules[0].name : (belowArmorDeck ? 'below the armoured deck' : 'between decks');
-        rep.text = belowArmorDeck && zn.citadel ? `CITADEL — shell burst in ${where}` : `Penetration — burst in ${where}`;
+        const armoured = zn.citadel && zn.belt >= 50;
+        if (belowArmorDeck && armoured) { rep.kind = rep.kind === 'underwater' ? 'underwater' : 'citadel'; }
+        const where = rep.modules.length ? rep.modules[0].name : (belowArmorDeck ? (armoured ? 'below the armoured deck' : 'the machinery spaces') : 'between decks');
+        rep.text = belowArmorDeck && armoured ? `CITADEL — shell burst in ${where}` : `Penetration — burst in ${where}`;
         return rep;
       }
     }
@@ -395,6 +423,65 @@ function segmentHitsRect(a: Vec2, b: Vec2, r: { x0: number; x1: number; y0: numb
     if (x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1) return true;
   }
   return false;
+}
+
+/**
+ * A torpedo strikes the hull side at local point p. The torpedo-defence system
+ * (liquid/void layers and a holding bulkhead) absorbs a rated charge: within the
+ * rating only the outer voids flood; beyond it the excess blows through into the
+ * vital spaces. Unprotected hulls (cruisers' thin bulges, destroyers) take it all.
+ */
+export function resolveTorpedo(ship: Ship, p: Vec2, warhead: number, depth: number, sink: DamageSink): HitReport {
+  const zone = zoneAt(ship, p.x);
+  const side = p.y >= 0 ? 1 : -1;
+  const rating = zone.tds ?? 0;
+  const excess = rating > 0 ? Math.max(0, warhead - rating) / warhead : 1;
+  const f = rating > 0 ? 0.18 + 0.82 * excess : 1;
+  const scaleW = warhead / 400;
+  const rep: HitReport = { ship, kind: 'torpedo', plate: rating > 0 ? 'torpedo protection' : 'hull below waterline', local: p, z: -depth, modules: [], fire: false, flooding: true, magazineDetonation: false, text: '' };
+  const z = -depth + ship.waterRise(p.x);
+  // hole in the shell plating: the outer voids always flood; a defeated bulkhead lets the sea into the vitals.
+  // The blast tears open every compartment it spans, not just the one it struck.
+  const area = (2 + 8 * f) * scaleW;
+  const span = (rating > 0 ? 4 + 6 * f : 9) * Math.sqrt(scaleW);
+  const secs = new Set<number>();
+  for (let x = p.x - span; x <= p.x + span; x += 2) secs.add(ship.sectionAt(x));
+  const main = ship.sectionAt(p.x);
+  for (const si of secs) {
+    const sec = ship.sections[si].def;
+    const hx = Math.max(sec.x0 + 0.5, Math.min(sec.x1 - 0.5, p.x));
+    sink.addHole(ship, hx, p.y, z, si === main ? area : area * 0.45);
+  }
+  // blast inboard of the side (at the holding bulkhead if there is one)
+  const hb = ship.cls.halfBeam(p.x);
+  const by = side * Math.max(0, hb - (rating > 0 ? 5 : 1.5));
+  const bx = p.x;
+  rep.det = { x: bx, y: by, z: -depth };
+  const R = (rating > 0 ? 6 + 10 * f : 13) * Math.sqrt(scaleW);
+  const power = warhead * 0.42 * f;
+  for (const m of ship.modules.values()) {
+    const r = m.def.rect;
+    const dx = Math.max(r.x0 - bx, 0, bx - r.x1), dy = Math.max(r.y0 - by, 0, by - r.y1);
+    const dd = Math.hypot(dx, dy);
+    if (dd > R) continue;
+    // the shock travels up into the upper works only on small, unprotected hulls
+    if (m.def.band === 'high' && (rating > 0 || dd > R * 0.5)) continue;
+    const k = dd <= 0 ? 1 : 1 - dd / R;
+    const h = sink.damageModule(ship, m.def.id, power * k * (0.8 + sink.rnd() * 0.4), 'torpedo');
+    if (h) rep.modules.push(h);
+    if (m.def.kind === 'magazine' && dd <= 0 && sink.rnd() < 0.08 * f) { rep.magazineDetonation = true; sink.detonateMagazine(ship, bx); }
+  }
+  if (sink.rnd() < 0.15 * f) rep.fire = sink.startFire(ship, bx, by * 0.6, 'low', 0.6) || rep.fire;
+  // a heavy warhead under a destroyer's keel amidships breaks her back
+  if (ship.cls.type === 'DD' && Math.abs(p.x) < ship.cls.length * 0.3 && sink.rnd() < 0.35 * scaleW && sink.breakInTwo) {
+    sink.breakInTwo(ship, p.x);
+    rep.text = 'Torpedo hit amidships — she has broken in two';
+    return rep;
+  }
+  rep.text = rating > 0
+    ? (excess > 0 ? `Torpedo hit — ${warhead} kg overwhelmed the ${rating} kg torpedo protection` : `Torpedo hit — absorbed by the torpedo protection`)
+    : `Torpedo hit below the waterline`;
+  return rep;
 }
 
 export function makePath(ship: Ship, landing: Vec2, dirWorld: Vec2, fall: number, v: number, shell: ShellDef): ShellPath {

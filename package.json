@@ -1,13 +1,14 @@
 {
   "name": "riptide",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Top-down WWII naval surface-action game with a semi-realistic shell, armour and compartment simulation",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx tools/test.ts",
+    "matchups": "tsx tools/matchups.ts",
     "dev": "vite",
     "build": "tsc -p . && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.mjs"
   },
   "keywords": [],
   "author": "",
@@ -24,5 +25,8 @@
     "@fontsource/barlow": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

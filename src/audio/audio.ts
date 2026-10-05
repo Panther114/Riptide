@@ -76,22 +76,24 @@ export class Audio {
   /** distance attenuation: d in metres from listener, zoomFactor widens hearing when zoomed out */
   private att(d: number, ref = 1500) { return 1 / (1 + Math.pow(d / ref, 1.4)); }
 
-  gun(d: number, own: boolean) {
+  /** k: calibre scale (16" = 1): smaller guns bark higher, shorter and quieter. */
+  gun(d: number, own: boolean, k = 1) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime + Math.min(d / 2400, 3.5) * (own ? 0 : 1);
-    const a = this.att(d, 3000) * (own ? 1 : 0.8);
+    const a = this.att(d, 3000 * Math.max(0.4, k)) * (own ? 1 : 0.8) * (0.35 + 0.65 * k);
     if (a < 0.01) return;
+    const len = 0.45 + 0.55 * k, pitch = 1 / Math.max(0.35, k);
     // low thump
     const o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.6);
-    const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.9 * a, t + 0.01); og.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-    o.connect(og).connect(this.master); o.start(t); o.stop(t + 1.5);
+    o.frequency.setValueAtTime(70 * pitch, t); o.frequency.exponentialRampToValueAtTime(28 * pitch, t + 0.6 * len);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.9 * a, t + 0.01); og.gain.exponentialRampToValueAtTime(0.0001, t + 1.4 * len);
+    o.connect(og).connect(this.master); o.start(t); o.stop(t + 1.5 * len);
     // blast body
-    const n = this.noiseSrc(own ? 1 : 0.7);
+    const n = this.noiseSrc((own ? 1 : 0.7) * Math.sqrt(pitch));
     const f = ctx.createBiquadFilter(); f.type = 'lowpass';
-    f.frequency.setValueAtTime(own ? 2400 : 700, t); f.frequency.exponentialRampToValueAtTime(140, t + 1.8);
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.1 * a, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
-    n.connect(f).connect(g).connect(this.master); n.start(t, Math.random() * 2); n.stop(t + 2.7);
+    f.frequency.setValueAtTime((own ? 2400 : 700) * Math.sqrt(pitch), t); f.frequency.exponentialRampToValueAtTime(140 * pitch, t + 1.8 * len);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.1 * a, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6 * len);
+    n.connect(f).connect(g).connect(this.master); n.start(t, Math.random() * 2); n.stop(t + 2.7 * len);
     // crack
     if (own) {
       const c = this.noiseSrc(2.5);

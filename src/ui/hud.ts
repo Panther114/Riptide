@@ -72,9 +72,12 @@ export class Hud {
 
     this.help = el('div', 'hud-help', `
       <div class="k"><b>W</b>/<b>S</b> engine telegraph</div>
-      <div class="k"><b>A</b>/<b>D</b> hold rudder</div>
-      <div class="k"><b>LMB</b> fire ready turrets</div>
-      <div class="k"><b>1</b>/<b>2</b> load AP / HC</div>
+      <div class="k"><b>A</b>/<b>D</b> rudder one step: port · amidships · starboard</div>
+      <div class="k"><b>LMB</b> fire ready turrets / launch torpedoes</div>
+      <div class="k"><b>RMB</b> set / drag a fixed aim point · <b>Space</b> aim follows cursor</div>
+      <div class="k"><b>1</b>/<b>2</b> load AP / HC · <b>T</b> guns ↔ torpedoes</div>
+      <div class="k"><b>X</b> smoke · <b>G</b> secondaries · <b>C</b> counter-flood</div>
+      <div class="k"><b>Click</b> the damage-control plan to send a party</div>
       <div class="k"><b>Wheel</b> zoom · <b>MMB</b> drag pan · click ship lock</div>
       <div class="k"><b>Tab</b> next ship (fleet battles)</div>
       <div class="k"><b>H</b> hide help · <b>Esc</b> pause</div>`);
@@ -87,7 +90,9 @@ export class Hud {
     if (!seen) {
       const tips: [number, string][] = [
         [5, '<b>Find the enemy</b> — middle-click the red arrow at the screen edge to lock the camera on her. Wheel to zoom.'],
-        [17, '<b>Lead the target</b> — your shells fly for many seconds. Put the cursor ahead of the dashed ghost hull and click to fire.'],
+        [17, '<b>Lead the target</b> — your shells fly for many seconds. Aim at the red diamond: fire control works out where she will be when your shells land.'],
+        [24, '<b>Fix your aim</b> — <b>right-click</b> the sea to pin the aim point there (drag to move it), so zooming and panning leave it alone. <b>Space</b> lets it follow the cursor again.'],
+        [52, '<b>Patience pays</b> — a steady point of aim refines the solution: the spread ellipse shrinks by about a third. Turning hard or switching targets starts it over.'],
         [31, '<b>Read the fall of shot</b> — spotting reports on the right say over, short or straddle. Walk your salvos on.'],
         [45, '<b>Angle your ship</b> — keep the enemy ~45° off the bow: all turrets bear and your belt is harder to pierce. <b>A</b>/<b>D</b> steer, <b>W</b>/<b>S</b> engines.'],
         [60, '<b>Damage control</b> — the diagram bottom-left shows every compartment. Hover it, or press <b>V</b> for the armour scheme.'],
@@ -201,6 +206,8 @@ export class Hud {
   }
 
   // ------------------------------------------------------------ main update
+  weapon: 'guns' | 'torpedo' = 'guns';
+
   update(world: World, me: Ship | null, dt: number, rudderHeld: number, focusId: number | null) {
     this.tick += dt;
     this.canvasTick += dt;
@@ -241,34 +248,48 @@ export class Hud {
     const ammoSel = me.cmd.ammo;
     const ammoTotals = { AP: 0, HC: 0 };
     for (const m of me.ammo.values()) { ammoTotals.AP += m.AP; ammoTotals.HC += m.HC; }
-    const fq = clamp01(1 - (me.dispersionMult() - 1) / 1.4);
-    const fqLabel = fq > 0.8 ? 'STEADY' : fq > 0.55 ? 'SETTLING' : 'DISTURBED';
+    const fq = clamp01(me.fcSettle - me.fcError * 1.5);
+    const fqLabel = me.fcError > 0.3 ? 'DISTURBED' : me.fcSettle > 0.9 ? 'REFINED' : me.fcSettle > 0.45 ? 'TRACKING' : 'RANGING';
+    const many = me.turrets.length > 3;
     const tur = me.turrets.map((t) => {
       const lvl = me.mod(t.def.id).level;
       const guns = me.gunsFor(t);
       let state = '', cls = '';
-      if (lvl === 3) { state = 'DESTROYED'; cls = 'dead'; }
-      else if (!me.turretOperable(t)) { state = me.mod(t.def.magazine).flooded ? 'MAG FLOODED' : 'NO AMMO'; cls = 'dead'; }
+      if (lvl === 3) { state = many ? 'LOST' : 'DESTROYED'; cls = 'dead'; }
+      else if (!me.turretOperable(t)) { state = me.mod(t.def.magazine).flooded ? (many ? 'FLOODED' : 'MAG FLOODED') : 'NO AMMO'; cls = 'dead'; }
       else if (t.jam > 0) { state = 'JAMMED'; cls = 'warn'; }
-      else if (!t.inArc) { state = 'BLIND ARC'; cls = 'warn'; }
-      else if (!t.loaded) { state = `LOADING ${t.reload.toFixed(0)}s`; cls = 'load'; }
-      else if (!t.aligned) { state = 'TRAINING'; cls = 'warn'; }
+      else if (!t.inArc) { state = many ? 'ARC' : 'BLIND ARC'; cls = 'warn'; }
+      else if (!t.loaded) { state = many ? `${t.reload.toFixed(0)}s` : `LOADING ${t.reload.toFixed(0)}s`; cls = 'load'; }
+      else if (!t.aligned) { state = many ? 'TRAIN' : 'TRAINING'; cls = 'warn'; }
       else { state = 'READY'; cls = 'ready'; }
       const prog = t.loaded ? 1 : 1 - clamp01(t.reload / me.cls.reloadTime);
-      const gunsHtml = [0, 1, 2].map((i) => `<i class="${i < guns ? 'on' : ''}"></i>`).join('');
+      const gunsHtml = Array.from({ length: t.def.guns }, (_, i) => `<i class="${i < guns ? 'on' : ''}"></i>`).join('');
+      const label = me.mod(t.def.id).def.short;
       return `<div class="turret ${cls}">
-        <div class="t-ring" style="--p:${prog}"><span>${t.def.name.replace('Turret ', '')}</span></div>
+        <div class="t-ring" style="--p:${prog}"><span>${label}</span></div>
         <div class="t-info"><div class="t-state">${state}</div><div class="t-guns">${gunsHtml}<em>${t.loaded ?? t.loading}</em></div></div>
       </div>`;
     }).join('');
+    // torpedoes, smoke, secondaries
+    const extras: string[] = [];
+    if (me.cls.torpedoes) {
+      const c = me.torpedoCapacity();
+      const spare = me.torpedoMounts.reduce((a, m) => a + m.spares * m.def.tubes, 0);
+      const reloading = me.torpedoMounts.find((m) => !m.loaded && m.spares > 0 && me.torpedoMountOk(m));
+      extras.push(`<div class="am wide ${this.weapon === 'torpedo' ? 'sel torp' : ''}"><b>T</b> TORPEDOES <span>${c.ready}</span>${spare ? `<small>+${spare}${reloading ? ` · ${reloading.reload.toFixed(0)}s` : ''}</small>` : ''}</div>`);
+    }
+    if (me.cls.smoke) extras.push(`<div class="am ${me.smoking ? 'sel' : ''}"><b>X</b> SMOKE <span>${Math.ceil(me.smokeLeft)}s</span></div>`);
+    if (me.cls.secondary) extras.push(`<div class="am ${me.cmd.secondaries !== false ? 'sel' : ''}"><b>G</b> SEC <span>${me.cmd.secondaries !== false ? 'FREE' : 'HOLD'}</span></div>`);
+    this.guns.classList.toggle('many', many);
     this.guns.innerHTML = `
-      <div class="panel-title"><span>MAIN BATTERY · 16"/50 MK 7</span><span>${me.stats.hits}/${me.stats.shells} HITS</span></div>
+      <div class="panel-title"><span>MAIN BATTERY · ${me.cls.gunName}</span><span>${me.stats.hits}/${me.stats.shells} HITS${me.stats.torpedoes ? ` · ${me.stats.torpHits}/${me.stats.torpedoes} TORP` : ''}</span></div>
       <div class="turrets">${tur}</div>
       <div class="ammo">
-        <div class="am ${ammoSel === 'AP' ? 'sel' : ''}"><b>1</b> AP <span>${ammoTotals.AP}</span></div>
-        <div class="am ${ammoSel === 'HC' ? 'sel' : ''}"><b>2</b> HC <span>${ammoTotals.HC}</span></div>
+        <div class="am ${ammoSel === 'AP' && this.weapon === 'guns' ? 'sel' : ''}"><b>1</b> AP <span>${ammoTotals.AP}</span></div>
+        <div class="am ${ammoSel === 'HC' && this.weapon === 'guns' ? 'sel' : ''}"><b>2</b> HC <span>${ammoTotals.HC}</span></div>
         <div class="fc"><div class="fc-l">SOLUTION <b>${fqLabel}</b></div><div class="fc-bar"><i style="width:${(fq * 100).toFixed(0)}%"></i></div></div>
-      </div>`;
+      </div>
+      ${extras.length ? `<div class="ammo extras">${extras.join('')}</div>` : ''}`;
 
     // tooltip for the module under the pointer
     const hv = this.status.hover;
@@ -279,7 +300,10 @@ export class Hud {
         const w = sec.port + sec.stbd;
         const holes = me.holes.filter((h) => me.sections[h.section] === sec);
         const under = holes.filter((h) => me.waterRise(h.x) - h.z > 0).length;
-        html = `<b>${sec.def.name} section</b><span>${Math.round(w)} / ${sec.def.capacity} t flooded · ${holes.length} hole${holes.length === 1 ? '' : 's'}${holes.length ? ` (${under} below water)` : ''}</span>`;
+        const idx = me.sections.indexOf(sec);
+        const party = me.dc.findIndex((p) => p.task?.type === 'section' && p.task.index === idx);
+        const fires = me.fires.filter((f) => me.sectionAt(f.x) === idx).length;
+        html = `<b>${sec.def.name} section</b><span>${Math.round(w)} / ${sec.def.capacity} t flooded · ${holes.length} hole${holes.length === 1 ? '' : 's'}${holes.length ? ` (${under} below water)` : ''}${fires ? ` · ${fires} fire${fires > 1 ? 's' : ''}` : ''}</span>${party >= 0 ? `<span class="dim">Party ${party + 1} working</span>` : me.dcNeeded({ type: 'section', index: idx }) ? '<span class="dim">Click: send damage control</span>' : ''}`;
       } else {
         const m = me.mod(hv);
         const lvl = m.flooded ? 'Flooded' : ['Operational', 'Damaged', 'Heavily damaged', 'Destroyed'][m.level];
@@ -287,8 +311,10 @@ export class Hud {
         const zone = me.cls.zones.find((z) => (m.def.rect.x0 + m.def.rect.x1) / 2 >= z.x0 && (m.def.rect.x0 + m.def.rect.x1) / 2 < z.x1);
         const armor = t ? `Face ${t.def.armor.face} · side ${t.def.armor.side} · roof ${t.def.armor.roof} · barbette ${t.def.armor.barbette} mm`
           : m.def.band === 'low' && zone ? `Behind ${zone.belt} mm belt / ${zone.deck} mm deck` : (me.cls.structures.find((q) => q.module === hv)?.armor ?? 16) + ' mm plating';
-        const effect = ({ engine: 'Drives one shaft: speed', boiler: 'Raises steam: speed', steering: 'Rudder control', bridge: 'Helm orders', director: 'Fire control: dispersion', funnel: 'Boiler draught', turret: 'Main battery', magazine: 'Ammunition supply' } as Record<string, string>)[m.def.kind];
-        html = `<b>${m.def.name}</b><span class="lv${m.flooded ? 3 : m.level}">${lvl} · ${Math.round((m.hp / m.def.hp) * 100)}%</span><span>${effect}</span><span class="dim">${armor}</span>`;
+        const effect = ({ engine: 'Drives a shaft: speed', boiler: 'Raises steam: speed', steering: 'Rudder control', bridge: 'Helm orders', director: 'Fire control & radar', funnel: 'Boiler draught', turret: 'Main battery', magazine: 'Ammunition supply', secondary: 'Secondary battery', torpedo: 'Torpedo tubes — loaded warheads can explode' } as Record<string, string>)[m.def.kind];
+        const party = me.dc.findIndex((p) => p.task?.type === 'module' && p.task.id === m.def.id);
+        const dcTxt = party >= 0 ? `Party ${party + 1} working` : me.dcNeeded({ type: 'module', id: m.def.id }) ? 'Click: send damage control' : m.hp < m.def.hp && me.repairCap(m) === 0 ? 'Beyond repair in action' : '';
+        html = `<b>${m.def.name}</b><span class="lv${m.flooded ? 3 : m.level}">${lvl} · ${Math.round((m.hp / m.def.hp) * 100)}%</span><span>${effect}</span><span class="dim">${armor}</span>${dcTxt ? `<span class="dim">${dcTxt}</span>` : ''}`;
       }
       this.tip.innerHTML = html;
       this.tip.classList.add('show');
@@ -297,14 +323,20 @@ export class Hud {
     // damage control stats
     const r = me.readiness();
     const floodPct = (me.floodTotal / me.cls.reserveBuoyancy) * 100;
-    (this.root.querySelector('.dc-name') as HTMLElement).textContent = `USS ${me.name.toUpperCase()}`;
+    (this.root.querySelector('.dc-name') as HTMLElement).textContent = `${me.cls.prefix} ${me.name.toUpperCase()}`;
+    const dcLine = me.dc.map((p, i) => {
+      if (!p.task) return `<span class="dcp idle">${i + 1} idle</span>`;
+      const what = p.task.type === 'section' ? (me.sections[p.task.index]?.def.name ?? '?') : (me.modules.get(p.task.id)?.def.short ?? '?');
+      return `<span class="dcp ${p.manual ? 'man' : ''}">${i + 1} ${what}</span>`;
+    }).join('');
     const bar = (label: string, v: number, warn: boolean, txt: string) =>
       `<div class="dc-bar ${warn ? 'warn' : ''}"><span class="l">${label}</span><span class="b"><i style="width:${(v * 100).toFixed(0)}%"></i></span><span class="t">${txt}</span></div>`;
     this.stat.innerHTML =
       bar('BUOYANCY', r.buoyancy, r.buoyancy < 0.5, `${(100 - floodPct).toFixed(0)}%`) +
       bar('PROPULSION', me.power, me.power < 0.5, `${Math.round(me.power * 100)}%`) +
-      bar('FIREPOWER', r.firepower, r.firepower < 0.5, `${me.turrets.reduce((a, t) => a + (me.turretOperable(t) ? me.gunsFor(t) : 0), 0)}/9`) +
-      `<div class="dc-line"><span>FLOOD <b>${me.floodTotal.toFixed(0)} t</b></span><span>LIST <b>${(Math.abs(me.list) / DEG).toFixed(1)}° ${me.list > 0.002 ? 'S' : me.list < -0.002 ? 'P' : ''}</b></span><span>TRIM <b>${(me.trim * 270).toFixed(1)} m</b></span><span class="${me.fires.length ? 'fire' : ''}">FIRES <b>${me.fires.length}</b></span></div>`;
+      bar('FIREPOWER', r.firepower, r.firepower < 0.5, `${me.operableGuns()}/${me.totalGuns}`) +
+      `<div class="dc-line"><span>FLOOD <b>${me.floodTotal.toFixed(0)} t</b></span><span class="${Math.abs(me.list) > 5 * DEG ? 'fire' : ''}">LIST <b>${(Math.abs(me.list) / DEG).toFixed(1)}° ${me.list > 0.002 ? 'S' : me.list < -0.002 ? 'P' : ''}</b>${me.counterflooding ? ' <em>CF</em>' : ''}</span><span>TRIM <b>${(me.trim * me.cls.length).toFixed(1)} m</b></span><span class="${me.fires.length ? 'fire' : ''}">FIRES <b>${me.fires.length}</b></span></div>` +
+      `<div class="dc-line dc-parties"><span class="dct">DC</span>${dcLine}<span class="dck">C counter-flood</span></div>`;
   }
 
   private updateTop(world: World, me: Ship | null) {
@@ -312,18 +344,19 @@ export class Hud {
     const clock = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
     const card = (s: Ship) => {
       const r = s.readiness();
-      const seg = (v: number) => `<span class="seg"><i style="width:${(clamp01(v) * 100).toFixed(0)}%"></i></span>`;
-      return `<div class="ship-card ${s.team} ${s.outOfAction ? 'out' : ''}">
-        <div class="sc-name">${s.name.toUpperCase()}${me && s.id === me.id ? ' <em>YOU</em>' : ''}</div>
+      const hidden = me && s.team !== me.team && !world.isVisibleTo(me.team, s) && !s.outOfAction;
+      const seg = (v: number) => `<span class="seg"><i style="width:${hidden ? 0 : (clamp01(v) * 100).toFixed(0)}%"></i></span>`;
+      return `<div class="ship-card ${s.team} ${s.outOfAction ? 'out' : ''} ${hidden ? 'hidden' : ''}">
+        <div class="sc-name"><small>${s.cls.type}</small> ${s.name.toUpperCase()}${me && s.id === me.id ? ' <em>YOU</em>' : ''}</div>
         <div class="sc-bars" title="Firepower · Mobility · Buoyancy">${seg(r.firepower)}${seg(r.mobility)}${seg(r.buoyancy)}</div>
-        ${s.outOfAction ? `<div class="sc-out">${s.outReason}</div>` : ''}
+        ${s.outOfAction ? `<div class="sc-out">${s.outReason}</div>` : hidden ? '<div class="sc-out">not in sight</div>' : ''}
       </div>`;
     };
     const blue = world.ships.filter((s) => s.team === 'blue').map(card).join('');
     const red = world.ships.filter((s) => s.team === 'red').map(card).join('');
     let rangeTxt = '';
     if (me) {
-      const foes = world.ships.filter((s) => s.team !== me.team && s.alive);
+      const foes = world.ships.filter((s) => s.team !== me.team && s.alive && world.isVisibleTo(me.team, s));
       if (foes.length) {
         const d = Math.min(...foes.map((f) => dist(f.pos, me.pos)));
         rangeTxt = `${(d / 1000).toFixed(1)} KM`;
@@ -356,17 +389,45 @@ export class Hud {
       ctx.beginPath(); ctx.arc(X(me.pos.x), Y(me.pos.y), me.cls.maxRange * k, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
     }
+    // islands
+    ctx.fillStyle = 'rgba(190,175,130,0.75)';
+    for (const isl of world.islands) {
+      ctx.beginPath();
+      isl.pts.forEach((p, i) => (i ? ctx.lineTo(X(p.x), Y(p.y)) : ctx.moveTo(X(p.x), Y(p.y))));
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.save(); ctx.beginPath(); ctx.rect(6, 6, S - 12, S - 12); ctx.clip();
+    // smoke screens
+    ctx.fillStyle = 'rgba(200,205,205,0.25)';
+    for (const p of world.smoke) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), Math.max(1, p.r * k), 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
     for (const sh of world.shells) {
+      if (sh.secondary) continue;
       const u = clamp01(sh.t / sh.T);
       ctx.fillStyle = 'rgba(255,200,120,0.7)';
       ctx.fillRect(X(sh.origin.x + (sh.target.x - sh.origin.x) * u) - 0.5, Y(sh.origin.y + (sh.target.y - sh.origin.y) * u) - 0.5, 1, 1);
     }
+    for (const tp of world.torpedoes) {
+      if (me && !world.torpedoSpotted(tp, me.team)) continue;
+      ctx.fillStyle = me && tp.team !== me.team ? 'rgba(255,120,100,0.9)' : 'rgba(170,230,255,0.9)';
+      ctx.fillRect(X(tp.pos.x) - 0.75, Y(tp.pos.y) - 0.75, 1.5, 1.5);
+    }
+    // last known positions
+    if (me) for (const [id, c] of world.contacts[me.team]) {
+      const s = world.shipById(id);
+      if (!s || s.status === 'sunk' || s.outOfAction || world.isVisibleTo(me.team, s) || world.time - c.t > 240) continue;
+      ctx.strokeStyle = TEAM_COLOR[s.team]; ctx.globalAlpha = 0.6; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.arc(X(c.pos.x), Y(c.pos.y), 3.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
     for (const s of world.ships) {
       if (s.status === 'sunk') continue;
+      if (me && !world.isVisibleTo(me.team, s)) continue;
       const x = X(s.pos.x), y = Y(s.pos.y);
       ctx.save(); ctx.translate(x, y); ctx.rotate(s.heading);
       ctx.fillStyle = s.alive ? TEAM_COLOR[s.team] : 'rgba(150,150,150,0.6)';
-      ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -3.5); ctx.lineTo(-2.5, 0); ctx.lineTo(-4, 3.5); ctx.closePath(); ctx.fill();
+      const z = s.cls.type === 'DD' ? 0.7 : s.cls.type === 'CA' ? 0.85 : 1;
+      ctx.beginPath(); ctx.moveTo(6 * z, 0); ctx.lineTo(-4 * z, -3.5 * z); ctx.lineTo(-2.5 * z, 0); ctx.lineTo(-4 * z, 3.5 * z); ctx.closePath(); ctx.fill();
       if (me && s.id === me.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke(); }
       ctx.restore();
       if (focusId === s.id) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke(); }

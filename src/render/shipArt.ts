@@ -1,21 +1,30 @@
-// Procedural top-down artwork for the Iowa class, rendered once to offscreen
+﻿// Procedural top-down artwork, rendered once per class & livery to offscreen
 // canvases: hull+deck sprite, shadow sprites, turret sprites. Built from the same
 // class data the simulation uses so the art and the armour layout line up.
+// Iowa has a hand-tuned builder; every other class is drawn from its ArtSpec.
 
-import type { ShipClass, TurretDef } from '../sim/shipClass';
+import type { ArtSpec, Nation, ShipClass } from '../sim/shipClass';
+import type { TeamId } from '../sim/types';
 
 export const ART_SCALE = 7; // sprite px per metre
+
+export interface TurretSprite {
+  house: HTMLCanvasElement;       // gunhouse, turret local frame
+  barrels: HTMLCanvasElement;     // the guns (drawn separately: recoil & elevation)
+  shadow: HTMLCanvasElement;
+  origin: number;                 // px of turret pivot in the sprite (x and y)
+  pivot: number;                  // m: where barrels start (recoil/foreshortening pivot)
+}
 
 export interface ShipArt {
   hull: HTMLCanvasElement;        // deck, superstructure, fittings (no main turrets)
   hullShadow: HTMLCanvasElement;  // hull silhouette for low shadow
   upperShadow: HTMLCanvasElement; // superstructure silhouette for long shadow
-  turret: HTMLCanvasElement;      // gunhouse, turret local frame
-  barrels: HTMLCanvasElement;     // the three guns (drawn separately: recoil & elevation)
-  turretShadow: HTMLCanvasElement;
   originX: number; originY: number; // sprite px of local (0,0)
-  turretOrigin: number;           // px of turret pivot in turret sprite (x and y)
   scale: number;
+  turrets: TurretSprite[];        // one per main turret (same order as cls.turrets)
+  secondaries: TurretSprite[];    // one per secondary mount
+  funnels: number[];              // local x of the funnels (smoke)
 }
 
 type Ctx = CanvasRenderingContext2D;
@@ -32,7 +41,43 @@ export const LIVERIES: Record<'blue' | 'red', Livery> = {
   red: { name: 'Measure 32', deck: '#8f8166', deckLine: 'rgba(50,40,30,0.24)', steel: '#868d8f', steelDark: '#4a4f52', steelLight: '#b9bdbd', hullEdge: '#2b2f33', camo: true },
 };
 
+/** Paint schemes by navy; the team only switches US ships between their two 1944 measures. */
+export function liveryFor(nation: Nation, team: TeamId): Livery {
+  if (nation === 'us') return LIVERIES[team];
+  if (nation === 'de') return team === 'blue'
+    ? { name: 'Rheinübung grey', deck: '#a38d6b', deckLine: 'rgba(60,44,28,0.22)', steel: '#9ca2a5', steelDark: '#646b6f', steelLight: '#c3c8ca', hullEdge: '#4b5257', camo: false }
+    : { name: 'Baltic camouflage', deck: '#9d8a6a', deckLine: 'rgba(60,44,28,0.22)', steel: '#979ea1', steelDark: '#5a6064', steelLight: '#c0c5c7', hullEdge: '#33383b', camo: true };
+  return { name: 'Kure grey', deck: '#9c8664', deckLine: 'rgba(55,40,25,0.22)', steel: '#7c8386', steelDark: '#4c5255', steelLight: '#a4abae', hullEdge: '#3a3f42', camo: false };
+}
+
+const sprites = new Map<string, TurretSprite>();
+/** Gunhouse sprites are shared between ships with the same mount. */
+export function turretSprite(o: { radius: number; guns: number; barrel: number; spacing: number; style: ArtSpec['turret'] }, livery: Livery): TurretSprite {
+  const key = `${o.radius}|${o.guns}|${o.barrel}|${o.spacing}|${o.style}|${livery.name}`;
+  let s = sprites.get(key);
+  if (s) return s;
+  const S = ART_SCALE;
+  const tR = Math.max(o.radius * 1.6, o.barrel + 2);
+  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = Math.ceil(tR * 2 * S); return c; };
+  const house = mk(), barrels = mk(), shadow = mk();
+  drawTurret(house.getContext('2d')!, tR * S, S, livery, 'house', o);
+  drawTurret(barrels.getContext('2d')!, tR * S, S, livery, 'barrels', o);
+  drawTurret(shadow.getContext('2d')!, tR * S, S, livery, 'shadow', o);
+  s = { house, barrels, shadow, origin: tR * S, pivot: o.radius * 0.78 };
+  sprites.set(key, s);
+  return s;
+}
+
 export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
+  const base = cls.art === 'iowa' ? buildIowaHull(cls, livery) : buildGenericHull(cls, cls.art, livery);
+  const style = cls.art === 'iowa' ? 'us' : cls.art.turret;
+  const turrets = cls.turrets.map((t) => turretSprite({ radius: t.radius, guns: t.guns, barrel: t.barrel, spacing: t.spacing, style }, livery));
+  const secondaries = (cls.secondary?.mounts ?? []).map((m) => turretSprite({ radius: m.radius, guns: m.guns, barrel: m.barrel, spacing: m.radius * 0.45, style: m.radius > 3.2 ? style : 'dd' }, livery));
+  const funnels = cls.art === 'iowa' ? [6.5, -23] : cls.art.funnels.map((f) => f.x);
+  return { ...base, turrets, secondaries, funnels };
+}
+
+function buildIowaHull(cls: ShipClass, livery: Livery) {
   const S = ART_SCALE;
   const pad = 30; // metres of padding for barrels and overhang
   const W = Math.ceil((cls.length + pad * 2) * S), H = Math.ceil((cls.beam + 20) * S);
@@ -172,8 +217,8 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
 
   // 01 level: long deckhouse carrying the 5"/38 battery
   tier(-50, 31.5, 10.2, 1.8, g1(-50, 31.5, 10.2), 12, 4);
-  // 5"/38 twin mounts along the sides (non-functional detail)
-  for (const x of [24, 12, 0, -24, -36]) for (const sd of [-1, 1]) fiveInch(ctx, x, sd * 12.6, sd, steel, dark);
+  // 5"/38 mount base rings (the mounts themselves are drawn live: they train on targets)
+  for (const x of [24, 12, 0, -24, -36]) for (const sd of [-1, 1]) circle(x, sd * 12.6, 2.9, dark, 'rgba(0,0,0,0.5)', 0.2);
   // boat deck details: vents and lockers
   ctx.fillStyle = 'rgba(30,36,40,0.55)';
   for (let x = -46; x < 28; x += 4.2) for (const sd of [-1, 1]) ctx.fillRect(x, sd * 8.6 - 0.35, 2.2, 0.7);
@@ -286,16 +331,7 @@ export function buildShipArt(cls: ShipClass, livery: Livery): ShipArt {
     c.fillRect(19, -6.5, 0.6, 13);
   }
 
-  // ------------------------------------------------ turret sprite
-  const tS = S, tR = 30; // half-size in metres of turret sprite
-  const turret = mk(tR * 2 * tS, tR * 2 * tS);
-  drawTurret(turret.getContext('2d')!, tR * tS, tS, livery, 'house');
-  const barrels = mk(tR * 2 * tS, tR * 2 * tS);
-  drawTurret(barrels.getContext('2d')!, tR * tS, tS, livery, 'barrels');
-  const turretShadow = mk(tR * 2 * tS, tR * 2 * tS);
-  drawTurret(turretShadow.getContext('2d')!, tR * tS, tS, livery, 'shadow');
-
-  return { hull, hullShadow, upperShadow, turret, barrels, turretShadow, originX: ox, originY: oy, turretOrigin: tR * tS, scale: S };
+  return { hull, hullShadow, upperShadow, originX: ox, originY: oy, scale: S };
 }
 
 function quad(ctx: Ctx, x: number, y: number, rot: number) {
@@ -346,68 +382,288 @@ function kingfisher(ctx: Ctx, x: number, y: number, rot: number) {
   ctx.restore();
 }
 
-function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, mode: 'shadow' | 'barrels' | 'house') {
+/** Gunhouse outline (local, + = muzzle direction) for each navy's style, scaled by the turret radius. */
+function turretOutline(style: ArtSpec['turret'], r: number): Path2D {
+  const p = new Path2D();
+  const P = (pts: [number, number][]) => { pts.forEach(([x, y], i) => (i ? p.lineTo(x * r, y * r) : p.moveTo(x * r, y * r))); p.closePath(); };
+  if (style === 'de') {
+    // Bismarck: slab-sided box, flat face, chamfered corners
+    P([[0.95, -0.74], [0.95, 0.74], [0.72, 0.95], [-1.02, 0.95], [-1.14, 0.8], [-1.14, -0.8], [-1.02, -0.95], [0.72, -0.95]]);
+  } else if (style === 'jp') {
+    // Yamato / Takao: narrow sloped face, long rounded rear
+    p.moveTo(0.86 * r, -0.5 * r); p.lineTo(0.86 * r, 0.5 * r); p.lineTo(0.32 * r, 0.96 * r); p.lineTo(-0.85 * r, 0.98 * r);
+    p.quadraticCurveTo(-1.3 * r, 0.9 * r, -1.32 * r, 0.45 * r); p.lineTo(-1.32 * r, -0.45 * r);
+    p.quadraticCurveTo(-1.3 * r, -0.9 * r, -0.85 * r, -0.98 * r); p.lineTo(0.32 * r, -0.96 * r); p.closePath();
+  } else if (style === 'dd') {
+    // enclosed destroyer / dual-purpose mount: rounded shield
+    p.moveTo(0.8 * r, -0.62 * r); p.lineTo(0.8 * r, 0.62 * r); p.lineTo(0.25 * r, 0.96 * r); p.lineTo(-0.7 * r, 0.9 * r);
+    p.quadraticCurveTo(-1.08 * r, 0.7 * r, -1.08 * r, 0); p.quadraticCurveTo(-1.08 * r, -0.7 * r, -0.7 * r, -0.9 * r); p.lineTo(0.25 * r, -0.96 * r); p.closePath();
+  } else {
+    // US: sloped face plate, long sides, rounded rear overhang (Iowa geometry at r = 7.2)
+    p.moveTo(0.92 * r, -0.72 * r); p.lineTo(0.92 * r, 0.72 * r); p.lineTo(0.44 * r, 0.92 * r); p.lineTo(-0.89 * r, 0.92 * r);
+    p.quadraticCurveTo(-1.19 * r, 0.89 * r, -1.22 * r, 0.53 * r); p.lineTo(-1.22 * r, -0.53 * r);
+    p.quadraticCurveTo(-1.19 * r, -0.89 * r, -0.89 * r, -0.92 * r); p.lineTo(0.44 * r, -0.92 * r); p.closePath();
+  }
+  return p;
+}
+
+function drawTurret(ctx: Ctx, o: number, S: number, l: Livery, mode: 'shadow' | 'barrels' | 'house', spec: { radius: number; guns: number; barrel: number; spacing: number; style: ArtSpec['turret'] }) {
   const shadow = mode === 'shadow';
+  const r = spec.radius;
   ctx.translate(o, o);
   ctx.scale(S, S);
-  const body = new Path2D();
-  // gunhouse: sloped face plate forward (+x), long sides, rounded rear overhang
-  body.moveTo(6.6, -5.2);
-  body.lineTo(6.6, 5.2);
-  body.lineTo(3.2, 6.6);
-  body.lineTo(-6.4, 6.6);
-  body.quadraticCurveTo(-8.6, 6.4, -8.8, 3.8);
-  body.lineTo(-8.8, -3.8);
-  body.quadraticCurveTo(-8.6, -6.4, -6.4, -6.6);
-  body.lineTo(3.2, -6.6);
-  body.closePath();
-  // barrels
+  const body = turretOutline(spec.style, r);
+  const bw = Math.min(0.62, Math.max(0.16, r * 0.086));   // barrel half-width
+  const b0 = r * 0.78;
   const barrel = (y: number) => {
     const p = new Path2D();
-    p.moveTo(5.6, y - 0.62); p.lineTo(25.5, y - 0.36); p.lineTo(26.6, y - 0.42); p.lineTo(26.6, y + 0.42); p.lineTo(25.5, y + 0.36); p.lineTo(5.6, y + 0.62); p.closePath();
+    const L = spec.barrel;
+    p.moveTo(b0, y - bw); p.lineTo(L - 1.1, y - bw * 0.58); p.lineTo(L, y - bw * 0.68); p.lineTo(L, y + bw * 0.68); p.lineTo(L - 1.1, y + bw * 0.58); p.lineTo(b0, y + bw); p.closePath();
     return p;
   };
+  const ys = Array.from({ length: spec.guns }, (_, g) => (g - (spec.guns - 1) / 2) * spec.spacing);
+  const ears = r > 4 && spec.style !== 'dd';
   if (shadow) {
     ctx.fillStyle = '#000';
     ctx.fill(body);
-    for (const y of [-2.6, 0, 2.6]) ctx.fill(barrel(y));
-    // rangefinder ears
-    ctx.fillRect(-5.4, -7.8, 2.2, 15.6);
+    for (const y of ys) ctx.fill(barrel(y));
+    if (ears) ctx.fillRect(-0.75 * r, -1.08 * r, 0.3 * r, 2.16 * r);
     return;
   }
-  if (mode === 'barrels') for (const y of [-2.6, 0, 2.6]) {
-    const b = barrel(y);
-    const g = ctx.createLinearGradient(0, y - 0.6, 0, y + 0.6);
-    g.addColorStop(0, '#9aa3a8'); g.addColorStop(0.45, '#6b7479'); g.addColorStop(1, '#3d4448');
-    ctx.fillStyle = g; ctx.fill(b);
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.1; ctx.stroke(b);
-    // blast bag
-    ctx.fillStyle = '#5b5f55'; ctx.fillRect(6.0, y - 0.85, 1.3, 1.7);
-    // muzzle
-    ctx.fillStyle = '#25292b'; ctx.fillRect(26.1, y - 0.25, 0.5, 0.5);
+  if (mode === 'barrels') {
+    for (const y of ys) {
+      const b = barrel(y);
+      const g = ctx.createLinearGradient(0, y - bw, 0, y + bw);
+      g.addColorStop(0, '#9aa3a8'); g.addColorStop(0.45, '#6b7479'); g.addColorStop(1, '#3d4448');
+      ctx.fillStyle = g; ctx.fill(b);
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = Math.max(0.04, bw * 0.16); ctx.stroke(b);
+      // blast bag & muzzle
+      ctx.fillStyle = '#5b5f55'; ctx.fillRect(b0 + 0.4, y - bw * 1.35, Math.max(0.5, r * 0.18), bw * 2.7);
+      ctx.fillStyle = '#25292b'; ctx.fillRect(spec.barrel - 0.5, y - bw * 0.4, 0.5, bw * 0.8);
+    }
+    return;
   }
-  if (mode === 'barrels') return;
-  const g = ctx.createLinearGradient(-8, -6.6, 6, 6.6);
+  const g = ctx.createLinearGradient(-r, -r, r, r);
   g.addColorStop(0, l.steelLight); g.addColorStop(0.5, l.steel); g.addColorStop(1, l.steelDark);
   ctx.fillStyle = g; ctx.fill(body);
-  ctx.lineWidth = 0.22; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.stroke(body);
-  // sloped face plate
+  ctx.lineWidth = Math.max(0.08, r * 0.03); ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.stroke(body);
+  // face plate highlight
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.beginPath(); ctx.moveTo(6.6, -5.2); ctx.lineTo(6.6, 5.2); ctx.lineTo(4.8, 5.8); ctx.lineTo(4.8, -5.8); ctx.closePath(); ctx.fill();
-  // rangefinder hoods (ears) at the rear
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); ctx.roundRect(-5.6, s > 0 ? 6.2 : -7.9, 2.4, 1.7, 0.6);
-    ctx.fillStyle = l.steelDark; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
+  ctx.fillRect(0.66 * r, -0.72 * r, 0.25 * r, 1.44 * r);
+  if (ears) {
+    // rangefinder hoods at the rear sides
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.roundRect(-0.78 * r, s > 0 ? 0.86 * r : -1.1 * r, 0.33 * r, 0.24 * r, 0.08 * r);
+      ctx.fillStyle = l.steelDark; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.15; ctx.stroke();
+    }
   }
-  // roof details: hatches, periscope hoods, vents, 40 mm quad on T3 style roof
+  // roof details: hatches, periscope hoods, vents
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  for (const [x, y] of [[-1.5, -3.6], [-1.5, 3.6], [2.4, -1.5], [2.4, 1.5]]) { ctx.beginPath(); ctx.roundRect(x - 0.7, y - 0.55, 1.4, 1.1, 0.3); ctx.fill(); }
+  for (const [x, y] of [[-0.21, -0.5], [-0.21, 0.5], [0.33, -0.21], [0.33, 0.21]]) { ctx.beginPath(); ctx.roundRect((x - 0.1) * r, (y - 0.08) * r, 0.2 * r, 0.15 * r, 0.04 * r); ctx.fill(); }
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(-6.8, -0.3, 4.2, 0.6);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.08;
-  ctx.beginPath(); ctx.moveTo(-8, -1.4); ctx.lineTo(4.5, -1.4); ctx.moveTo(-8, 1.4); ctx.lineTo(4.5, 1.4); ctx.stroke();
-  // white identification number on roof is off for wartime; a small star of service flag stripe
-  if (l.camo) { ctx.fillStyle = 'rgba(25,28,30,0.45)'; ctx.beginPath(); ctx.moveTo(-8.6, -3); ctx.lineTo(-2, -6.6); ctx.lineTo(1, -6.6); ctx.lineTo(-8.8, 1); ctx.closePath(); ctx.fill(); }
+  ctx.fillRect(-0.94 * r, -0.04 * r, 0.58 * r, 0.08 * r);
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = Math.max(0.04, r * 0.011);
+  ctx.beginPath(); ctx.moveTo(-1.1 * r, -0.19 * r); ctx.lineTo(0.62 * r, -0.19 * r); ctx.moveTo(-1.1 * r, 0.19 * r); ctx.lineTo(0.62 * r, 0.19 * r); ctx.stroke();
+  if (l.camo) { ctx.fillStyle = 'rgba(25,28,30,0.45)'; ctx.beginPath(); ctx.moveTo(-1.19 * r, -0.42 * r); ctx.lineTo(-0.28 * r, -0.92 * r); ctx.lineTo(0.14 * r, -0.92 * r); ctx.lineTo(-1.22 * r, 0.14 * r); ctx.closePath(); ctx.fill(); }
 }
 
-export function turretDefs(cls: ShipClass): TurretDef[] { return cls.turrets; }
+// ------------------------------------------------------------------ generic builder
+function buildGenericHull(cls: ShipClass, spec: ArtSpec, livery: Livery) {
+  const S = ART_SCALE;
+  const pad = Math.max(12, cls.length * 0.11);
+  const half = cls.length / 2, hbMax = cls.beam / 2;
+  const W = Math.ceil((cls.length + pad * 2) * S), H = Math.ceil((cls.beam + 20) * S);
+  const ox = (half + pad) * S, oy = H / 2;
+  const mk = (w: number, h: number) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const hull = mk(W, H);
+  const ctx = hull.getContext('2d')!;
+  ctx.translate(ox, oy);
+  ctx.scale(S, S);
+  const small = cls.type === 'DD';
+
+  const hullPath = new Path2D();
+  cls.hull.forEach((p, i) => (i ? hullPath.lineTo(p.x, p.y) : hullPath.moveTo(p.x, p.y)));
+  hullPath.closePath();
+  ctx.fillStyle = livery.hullEdge;
+  ctx.fill(hullPath);
+  const deckPath = new Path2D();
+  const inset = small ? 0.3 : 0.5;
+  cls.hull.forEach((p, i) => {
+    const q = { x: p.x * 0.997, y: Math.sign(p.y) * Math.max(0, Math.abs(p.y) - inset - Math.max(0, p.x - half * 0.6) / half * 0.6) };
+    i ? deckPath.lineTo(q.x, q.y) : deckPath.moveTo(q.x, q.y);
+  });
+  deckPath.closePath();
+
+  ctx.save();
+  ctx.clip(deckPath);
+  // deck covering
+  const deckCol = spec.deck === 'teak' ? livery.deck : spec.deck === 'linoleum' ? '#7d5f4a' : '#6f777b';
+  ctx.fillStyle = deckCol;
+  ctx.fillRect(-half - 2, -hbMax - 2, cls.length + 4, cls.beam + 4);
+  if (spec.deck === 'teak') {
+    for (let y = -hbMax; y < hbMax; y += 0.26) {
+      const k = Math.sin(y * 91.7) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(${k > 0.5 ? '255,240,210' : '40,25,10'},${0.025 + Math.abs(k - 0.5) * 0.05})`;
+      ctx.fillRect(-half, y, cls.length, 0.24);
+    }
+    ctx.strokeStyle = livery.deckLine; ctx.lineWidth = 0.05;
+    for (let y = -hbMax; y < hbMax; y += 0.26) { ctx.beginPath(); ctx.moveTo(-half, y); ctx.lineTo(half, y); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(40,28,16,0.12)';
+    for (let y = -hbMax, i = 0; y < hbMax; y += 0.26, i++) for (let x = -half + (i % 5) * 1.6; x < half; x += 8) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 0.26); ctx.stroke(); }
+    // steel areas at the extremities
+    ctx.fillStyle = 'rgba(75,82,88,0.85)';
+    ctx.fillRect(half - cls.length * 0.07, -hbMax, cls.length * 0.08, cls.beam);
+  } else {
+    // painted steel / linoleum with brass strips: transverse seams
+    ctx.strokeStyle = spec.deck === 'linoleum' ? 'rgba(200,170,110,0.35)' : 'rgba(30,35,38,0.35)';
+    ctx.lineWidth = spec.deck === 'linoleum' ? 0.12 : 0.07;
+    for (let x = -half; x < half; x += spec.deck === 'linoleum' ? 1.8 : 2.4) { ctx.beginPath(); ctx.moveTo(x, -hbMax); ctx.lineTo(x, hbMax); ctx.stroke(); }
+    for (let i = 0; i < 90; i++) {
+      const x = (Math.sin(i * 12.9898) * 43758.5453 % 1) * half, y = (Math.sin(i * 78.233) * 12345.678 % 1) * hbMax;
+      ctx.fillStyle = `rgba(0,0,0,${0.03 + (i % 4) * 0.012})`;
+      ctx.fillRect(x, y, 2 + (i % 5), 0.6 + (i % 3) * 0.3);
+    }
+  }
+  if (livery.camo) {
+    ctx.globalAlpha = 0.5;
+    const camo = ['#2a2e31', '#6e7679', '#2a2e31', '#9aa2a4'];
+    const step = cls.length / 18;
+    for (let i = 0; i < 18; i++) {
+      const x = -half + 2 + i * step;
+      ctx.fillStyle = camo[i % 4];
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x, sgn * (hbMax + 2)); ctx.lineTo(x + step * 0.6, sgn * (hbMax + 2)); ctx.lineTo(x + step + (i % 3) * 0.13 * step, sgn * (cls.halfBeam(x + step * 0.66) - hbMax * 0.09)); ctx.lineTo(x + step * 0.2, sgn * (cls.halfBeam(x) - hbMax * 0.06));
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  const g = ctx.createLinearGradient(0, -hbMax, 0, hbMax);
+  g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(0.12, 'rgba(0,0,0,0.0)'); g.addColorStop(0.45, 'rgba(255,255,255,0.05)');
+  g.addColorStop(0.88, 'rgba(0,0,0,0.0)'); g.addColorStop(1, 'rgba(0,0,0,0.38)');
+  ctx.fillStyle = g; ctx.fillRect(-half - 2, -hbMax - 1, cls.length + 4, cls.beam + 2);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(225,230,232,0.55)'; ctx.lineWidth = small ? 0.12 : 0.2; ctx.stroke(deckPath);
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.16; ctx.stroke(hullPath);
+
+  const steel = livery.steel, dark = livery.steelDark, light = livery.steelLight;
+  const circle = (x: number, y: number, rad: number, fill: string, stroke = 'rgba(0,0,0,0.5)', lw = 0.15) => {
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
+  };
+
+  // ---- bow fittings: anchor cables, windlass, breakwater
+  const bowX = half;
+  ctx.strokeStyle = 'rgba(30,30,30,0.85)'; ctx.lineWidth = small ? 0.3 : 0.5; ctx.setLineDash([0.45, 0.32]);
+  const chainA = bowX - (small ? 4 : 9), chainB = bowX - cls.length * (small ? 0.12 : 0.1);
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(chainA, s * hbMax * 0.14); ctx.lineTo(chainB, s * hbMax * 0.15); ctx.stroke(); }
+  ctx.setLineDash([]);
+  for (const s of [-1, 1]) circle(chainB - 1, s * hbMax * 0.15, small ? 0.5 : 0.9, dark);
+  if (spec.breakwater) {
+    const bw = cls.halfBeam(spec.breakwater) * 0.7;
+    ctx.strokeStyle = steel; ctx.lineWidth = small ? 0.35 : 0.6;
+    ctx.beginPath(); ctx.moveTo(spec.breakwater - 5, -bw); ctx.lineTo(spec.breakwater, 0); ctx.lineTo(spec.breakwater - 5, bw); ctx.stroke();
+  }
+  circle(half - 1.2, 0, small ? 0.2 : 0.35, '#ddd');
+  // bollards along the deck edge
+  for (let i = 0; i < 8; i++) {
+    const x = -half + 6 + (i / 7) * (cls.length - 14);
+    if (Math.abs(x) < cls.length * 0.3) continue;
+    for (const s of [-1, 1]) { const hb = cls.halfBeam(x) - (small ? 0.7 : 1.3); if (hb < 1) continue; rr(ctx, x - 0.5, s * hb - 0.35, 1, 0.7, 0.25); ctx.fillStyle = '#2d3236'; ctx.fill(); }
+  }
+  // ---- barbettes
+  for (const t of cls.turrets) circle(t.x, t.y, t.barbetteRadius + 0.5, dark, 'rgba(0,0,0,0.6)', small ? 0.15 : 0.25);
+  for (const m of cls.secondary?.mounts ?? []) circle(m.x, m.y, m.radius * 1.05, dark, 'rgba(0,0,0,0.5)', 0.15);
+
+  // ---- catapults, aircraft & boats (under the superstructure tiers)
+  for (const c of spec.catapults ?? []) {
+    ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot);
+    ctx.fillStyle = '#4a5054'; ctx.fillRect(-1, -0.7, c.len, 1.4);
+    ctx.strokeStyle = '#2a2e30'; ctx.lineWidth = 0.12; ctx.strokeRect(-1, -0.7, c.len, 1.4);
+    circle(0, 0, 1.6, '#5a6064');
+    ctx.restore();
+  }
+  for (const a of spec.aircraft ?? []) kingfisher(ctx, a.x, a.y, a.rot);
+
+  // ---- superstructure
+  const shade = (x0: number, x1: number, hw: number, tone: 'steel' | 'light' | 'dark' = 'steel') => {
+    const gr = ctx.createLinearGradient(0, -hw, 0, hw);
+    const top = tone === 'light' ? light : tone === 'dark' ? steel : light;
+    const mid = tone === 'light' ? light : tone === 'dark' ? dark : steel;
+    gr.addColorStop(0, top); gr.addColorStop(0.5, mid); gr.addColorStop(1, dark);
+    void x0; void x1;
+    return gr;
+  };
+  const blockPath = (b: ArtSpec['blocks'][number]) => {
+    const r = Math.min(b.r ?? 1.2, b.hw * 0.9, (b.x1 - b.x0) / 2), y = b.y ?? 0, taper = Math.min(b.taper ?? 0, (b.x1 - b.x0) / 2);
+    const p = new Path2D();
+    if (taper > 0) {
+      const { x0, x1, hw } = b;
+      p.moveTo(x0 + r, y - hw); p.lineTo(x1 - taper, y - hw); p.quadraticCurveTo(x1, y - hw * 0.6, x1, y);
+      p.quadraticCurveTo(x1, y + hw * 0.6, x1 - taper, y + hw); p.lineTo(x0 + r, y + hw);
+      p.quadraticCurveTo(x0, y + hw, x0, y + hw - r); p.lineTo(x0, y - hw + r); p.quadraticCurveTo(x0, y - hw, x0 + r, y - hw);
+    } else p.roundRect(b.x0, y - b.hw, b.x1 - b.x0, b.hw * 2, r);
+    return p;
+  };
+  spec.blocks.forEach((b, i) => {
+    const p = blockPath(b);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = (small ? 4 : 10) * (i === 0 ? 1.2 : 1);
+    ctx.fillStyle = shade(b.x0, b.x1, b.hw, b.tone); ctx.fill(p);
+    ctx.restore();
+    ctx.lineWidth = small ? 0.1 : 0.16; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke(p);
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = small ? 0.1 : 0.18;
+    const y = b.y ?? 0;
+    ctx.beginPath(); ctx.moveTo(b.x0 + 1, y - b.hw + 0.15); ctx.lineTo(b.x1 - Math.max(1, b.taper ?? 0), y - b.hw + 0.15); ctx.stroke();
+    // vents & lockers on the lowest deckhouse
+    if (i === 0 && !small) {
+      ctx.fillStyle = 'rgba(30,36,40,0.45)';
+      for (let x = b.x0 + 3; x < b.x1 - 4; x += 4.2) for (const sd of [-1, 1]) ctx.fillRect(x, y + sd * b.hw * 0.78 - 0.3, 2, 0.6);
+    }
+  });
+  for (const bt of spec.boats ?? []) {
+    ctx.save(); ctx.translate(bt.x, bt.y);
+    ctx.beginPath(); ctx.moveTo(-bt.l / 2, -bt.w / 2 + 0.4); ctx.quadraticCurveTo(bt.l / 2 + 1, -bt.w / 2, bt.l / 2, 0); ctx.quadraticCurveTo(bt.l / 2 + 1, bt.w / 2, -bt.l / 2, bt.w / 2 - 0.4); ctx.closePath();
+    ctx.fillStyle = '#9aa3a8'; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.15; ctx.stroke();
+    ctx.fillStyle = '#5b6266'; ctx.fillRect(-bt.l / 4, -bt.w / 4, bt.l / 2.5, bt.w / 2);
+    ctx.restore();
+  }
+  // directors with their rangefinder arms
+  for (const d of spec.directors) {
+    const y = d.y ?? 0;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = small ? 3 : 8;
+    ctx.beginPath(); ctx.roundRect(d.x - d.l / 2, y - d.w / 2, d.l, d.w, Math.min(d.l, d.w) * 0.35); ctx.fillStyle = '#8a959a'; ctx.fill(); ctx.restore();
+    ctx.lineWidth = 0.14; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
+    if (d.rf) { ctx.fillStyle = '#39424a'; ctx.beginPath(); ctx.roundRect(d.x - 0.6, y - d.rf / 2, 1.2, d.rf, 0.5); ctx.fill(); }
+  }
+  for (const f of spec.funnels) funnel(ctx, f.x, f.len, f.w);
+  // masts
+  ctx.strokeStyle = '#262c30'; ctx.lineWidth = small ? 0.18 : 0.3;
+  for (const m of spec.masts) { ctx.beginPath(); ctx.moveTo(m.x, -m.span / 2); ctx.lineTo(m.x, m.span / 2); ctx.moveTo(m.x - 1.4, 0); ctx.lineTo(m.x + 1.4, 0); ctx.stroke(); }
+  // light AA
+  for (const [x, y] of spec.aa) { circle(x, y, small ? 1.1 : 1.9, dark); quad(ctx, x, y, y > 0 ? 0.6 : -0.6); }
+
+  // weathering
+  ctx.save(); ctx.clip(hullPath);
+  for (let i = 0; i < Math.round(cls.length * 0.9); i++) {
+    const x = (Math.sin(i * 12.9898) * 43758.5453 % 1) * half, y = (Math.sin(i * 78.233) * 12345.678 % 1) * hbMax;
+    ctx.fillStyle = `rgba(30,25,20,${0.03 + (i % 5) * 0.012})`;
+    ctx.beginPath(); ctx.ellipse(x, y, (1.5 + (i % 7)) * (small ? 0.5 : 1), 0.3 + (i % 3) * 0.2, 0, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+
+  // ---- shadows
+  const hullShadow = mk(W, H);
+  { const c = hullShadow.getContext('2d')!; c.translate(ox, oy); c.scale(S, S); c.fillStyle = '#000'; c.fill(hullPath); }
+  const upperShadow = mk(W, H);
+  {
+    const c = upperShadow.getContext('2d')!;
+    c.translate(ox, oy); c.scale(S, S); c.fillStyle = '#000';
+    for (const b of spec.blocks) c.fill(blockPath(b));
+    for (const f of spec.funnels) { c.beginPath(); c.ellipse(f.x, 0, f.len / 2, f.w / 2, 0, 0, 7); c.fill(); }
+    for (const m of spec.masts) c.fillRect(m.x - 0.3, -m.span / 2, 0.6, m.span);
+  }
+  return { hull, hullShadow, upperShadow, originX: ox, originY: oy, scale: S };
+}
+

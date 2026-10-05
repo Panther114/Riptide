@@ -27,9 +27,25 @@ export interface ShipCommand {
   aim: Vec2 | null;         // requested fall-of-shot point (world)
   fire: boolean;            // fire every ready turret this tick
   ammo: AmmoType;           // ammunition to load next
+  /** Launch a torpedo spread from every ready mount that bears on this point (one tick). */
+  torpedo?: Vec2 | null;
+  /** Smoke generators running. */
+  smoke?: boolean;
+  /** Secondary battery weapons-free (default true). */
+  secondaries?: boolean;
+  /** One-shot orders (damage control etc.), consumed by the ship when received. */
+  orders?: Order[];
 }
 
-export const newCommand = (): ShipCommand => ({ telegraph: 0, rudder: 0, aim: null, fire: false, ammo: 'AP' });
+/** What a damage-control party can be sent to. */
+export type DCTarget = { type: 'module'; id: string } | { type: 'section'; index: number };
+
+export type Order =
+  | { kind: 'dc'; target: DCTarget }        // send the best-placed party here
+  | { kind: 'dcAuto' }                      // release every party back to automatic damage control
+  | { kind: 'counterflood' };              // flood the opposite side to correct a list
+
+export const newCommand = (): ShipCommand => ({ telegraph: 0, rudder: 0, aim: null, fire: false, ammo: 'AP', torpedo: null, smoke: false, secondaries: true });
 
 export type ModuleStateLevel = 0 | 1 | 2 | 3; // ok, damaged, heavy, destroyed
 export const STATE_NAMES = ['Operational', 'Damaged', 'Heavily damaged', 'Destroyed'];
@@ -45,10 +61,18 @@ export interface ShipSpawn {
   controller: 'player' | 'ai';
 }
 
+export type Conditions = 'day' | 'dusk' | 'night';
+export type Terrain = 'open' | 'islands' | 'strait';
+
 export interface BattleConfig {
   seed: number;
   mapSize: number;          // square side (m)
   ships: ShipSpawn[];
   difficulty: 'cadet' | 'officer' | 'admiral';
   wind: number;             // radians, for smoke drift
+  /** Light: visual detection range (day ~26 km, dusk ~14 km, night ~7 km for a battleship). */
+  conditions?: Conditions;
+  terrain?: Terrain;
+  /** Explicit island outlines (world metres). Generated from the seed when absent and terrain ≠ open. */
+  islands?: Vec2[][];
 }
